@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a6a80">
+<title>Premier Pools Cash Book</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="PP Cash Book">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=Public+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: PIN lock screen → day-grouped cash book; balances on top, Javed's entry buttons, approvals queue, ledger */
+:root{
+  --bg:#eef3f4; --surface:#ffffff; --sunk:#e3ebed; --ink:#11252c; --muted:#58707a; --line:#d3dfe2;
+  --accent:#0a6a80; --accent-ink:#ffffff; --in:#127a49; --in-soft:#dff2e8; --out:#b8342a; --out-soft:#f8e2df; --xfer:#6a5a9c; --xfer-soft:#ebe6f6;
+  --warn-soft:#fff3d6; --warn-ink:#7a5a00;
+  --display:"Archivo","Arial Narrow",system-ui,sans-serif;
+  --body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0c1518; --surface:#132026; --sunk:#0f1b20; --ink:#e2edf0; --muted:#8ea4ac; --line:#22353c;
+  --accent:#3bb4cc; --accent-ink:#06191e; --in:#4fca8d; --in-soft:#143327; --out:#f0806f; --out-soft:#3a1d1a; --xfer:#b3a3e6; --xfer-soft:#28223d;
+  --warn-soft:#352b10; --warn-ink:#f1d27a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0c1518; --surface:#132026; --sunk:#0f1b20; --ink:#e2edf0; --muted:#8ea4ac; --line:#22353c;
+  --accent:#3bb4cc; --accent-ink:#06191e; --in:#4fca8d; --in-soft:#143327; --out:#f0806f; --out-soft:#3a1d1a; --xfer:#b3a3e6; --xfer-soft:#28223d;
+  --warn-soft:#352b10; --warn-ink:#f1d27a; color-scheme:dark}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45}
+.wrap{max-width:860px;margin:0 auto;padding-block:20px 60px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:18px}
+.num{font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+button[disabled]{opacity:.55;cursor:not-allowed}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.brand small{display:block;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.brand h1{margin:0;font-family:var(--display);font-weight:800;font-size:28px;letter-spacing:-.01em;text-wrap:balance}
+.head-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ghost{background:transparent;border:1px solid var(--line);border-radius:8px;padding:7px 12px;font-size:13px;font-weight:600;color:var(--ink)}
+.ghost:hover{background:var(--sunk)}
+.me{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;padding:6px 10px;border-radius:999px;background:var(--sunk)}
+.me i{font-style:normal;font-weight:500;color:var(--muted)}
+
+.status{font-size:13px;padding:9px 12px;border-radius:8px;background:var(--warn-soft);color:var(--warn-ink)}
+
+/* balances */
+.balances{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+@media (min-width:640px){.balances{grid-template-columns:repeat(5,minmax(0,1fr))}}
+.bal{padding:14px 16px;display:flex;flex-direction:column;gap:2px;min-width:0;background:var(--surface)}
+.bal.total{grid-column:1/-1}
+@media (min-width:640px){.bal.total{grid-column:auto}}
+.bal span{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.bal strong{font-family:var(--display);font-weight:800;font-size:clamp(18px,4.2vw,24px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bal.total{background:var(--accent);color:var(--accent-ink)}
+.bal.total span{color:inherit;opacity:.8}
+.neg{color:var(--out)}
+.bal.total .neg{color:inherit}
+
+/* quick add */
+.quick{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+@media (min-width:640px){.quick{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.qbtn{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);text-align:left;font-weight:600;font-size:14px;min-width:0}
+.qbtn:hover{border-color:var(--accent)}
+.qbtn i{flex:none;width:28px;height:28px;border-radius:7px;display:grid;place-items:center;font-style:normal;font-weight:800;font-size:16px}
+.qbtn.in i{background:var(--in-soft);color:var(--in)}
+.qbtn.out i{background:var(--out-soft);color:var(--out)}
+.qbtn.xfer i{background:var(--xfer-soft);color:var(--xfer)}
+.qbtn small{display:block;font-weight:500;font-size:12px;color:var(--muted)}
+.qbtn.wide{grid-column:1/-1;padding:8px 12px}
+.qbtn.wide i{width:24px;height:24px;font-size:13px}
+.viewonly{font-size:13px;color:var(--muted);padding:10px 12px;border:1px dashed var(--line);border-radius:10px}
+
+/* approvals */
+.approvals{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.approvals h2{margin:0;padding:12px 16px;font-family:var(--display);font-weight:800;font-size:16px;background:var(--warn-soft);color:var(--warn-ink)}
+.req{padding:12px 16px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.req .t{font-weight:700}
+.req .why{font-size:13px;color:var(--muted)}
+.diff{font-size:13px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 10px}
+.diff dt{color:var(--muted)}
+.diff dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.diff s{color:var(--out)}
+.diff b{color:var(--in)}
+.who-ok{display:flex;gap:6px;flex-wrap:wrap}
+.pill{font-size:12px;font-weight:600;border-radius:999px;padding:2px 9px;background:var(--sunk);color:var(--muted)}
+.pill.ok{background:var(--in-soft);color:var(--in)}
+.pill.no{background:var(--out-soft);color:var(--out)}
+.req .btns{display:flex;gap:8px;flex-wrap:wrap}
+
+/* filters */
+.filters{display:flex;flex-direction:column;gap:10px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px;font-size:13px;font-weight:600;color:var(--muted)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.row2{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row2 input,.row2 select{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 10px;font-size:14px;min-width:0}
+.row2 .search{flex:1 1 180px}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:transparent;padding:7px 12px;font-size:13px;font-weight:600;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.totals{display:flex;gap:18px;flex-wrap:wrap;font-size:14px;color:var(--muted);padding:2px 2px}
+.totals b{font-weight:700;color:var(--ink)}
+.totals .in b{color:var(--in)} .totals .out b{color:var(--out)}
+
+/* ledger */
+.ledger{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.edge{display:flex;justify-content:space-between;gap:10px;padding:10px 16px;background:var(--sunk);font-size:13px;color:var(--muted);font-weight:600}
+.edge b{color:var(--ink)}
+.day{border-top:1px solid var(--line)}
+.dayhead{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:10px 16px 4px;flex-wrap:wrap}
+.dayhead h3{margin:0;font-family:var(--display);font-weight:600;font-size:15px}
+.dayhead .dt{font-size:12px;color:var(--muted)}
+.dayhead .dt .i{color:var(--in)} .dayhead .dt .o{color:var(--out)}
+.entry{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:9px 16px;width:100%;border:0;background:transparent;text-align:left}
+.entry:hover{background:var(--sunk)}
+.tag{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;font-weight:800;font-size:12px}
+.tag.in{background:var(--in-soft);color:var(--in)} .tag.out{background:var(--out-soft);color:var(--out)} .tag.xfer{background:var(--xfer-soft);color:var(--xfer)}
+.who{min-width:0}
+.who .p{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.who .m{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mini{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:2px;background:var(--sunk);color:var(--muted)}
+.mini.wait{background:var(--warn-soft);color:var(--warn-ink)}
+.amt{text-align:right;white-space:nowrap}
+.amt .a{font-weight:700}
+.amt .a.in{color:var(--in)} .amt .a.out{color:var(--out)} .amt .a.xfer{color:var(--xfer)}
+.amt .b{font-size:12px;color:var(--muted)}
+.empty{padding:36px 20px;text-align:center;color:var(--muted)}
+.empty strong{display:block;color:var(--ink);font-size:16px;margin-bottom:4px}
+
+/* sheets */
+.overlay{position:fixed;inset:0;background:rgba(5,15,18,.45);z-index:20;display:flex;align-items:flex-end;justify-content:center;padding:0 env(safe-area-inset-right,0px) 0 env(safe-area-inset-left,0px)}
+@media (min-width:640px){.overlay{align-items:center;padding:24px}}
+.sheet{background:var(--surface);width:100%;max-width:520px;max-height:92vh;overflow:auto;border-radius:16px 16px 0 0;padding:18px max(18px,env(safe-area-inset-left,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(18px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:14px}
+@media (min-width:640px){.sheet{border-radius:16px}}
+.sheet h2{margin:0;font-family:var(--display);font-weight:800;font-size:20px}
+.sheet h3{margin:4px 0 0;font-size:14px}
+.types{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.types button{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px;font-size:13px;font-weight:600;text-align:left}
+.types button[aria-pressed="true"].in{background:var(--in-soft);border-color:var(--in);color:var(--in)}
+.types button[aria-pressed="true"].out{background:var(--out-soft);border-color:var(--out);color:var(--out)}
+.types button[aria-pressed="true"].xfer{background:var(--xfer-soft);border-color:var(--xfer);color:var(--xfer)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.full{grid-column:1/-1}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.02em;min-width:0}
+label.f input,label.f select,label.f textarea{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:9px 10px;font-size:15px;color:var(--ink);font-weight:400;width:100%;min-width:0}
+label.f input.big{font-family:var(--display);font-weight:800;font-size:22px}
+label.f input:disabled{opacity:.7}
+.err{color:var(--out);font-size:13px;min-height:1em}
+.actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:space-between;align-items:center}
+.actions .r{display:flex;gap:8px;flex-wrap:wrap}
+.primary{background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:10px 16px;font-weight:700}
+.secondary{background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:10px 14px;font-weight:600}
+.danger{background:transparent;border:1px solid var(--out);color:var(--out);border-radius:8px;padding:10px 14px;font-weight:600}
+.okbtn{background:var(--in);color:var(--surface);border:0;border-radius:8px;padding:9px 14px;font-weight:700}
+.note{font-size:12.5px;color:var(--muted);margin:0}
+.facts{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;margin:0;font-size:14px}
+.facts dt{color:var(--muted)}
+.facts dd{margin:0;min-width:0;overflow-wrap:anywhere;font-weight:600}
+.hist{display:flex;flex-direction:column;gap:8px}
+.hist div{font-size:13px;background:var(--sunk);border-radius:8px;padding:8px 10px}
+.lockline{font-size:13px;padding:9px 12px;border-radius:8px;background:var(--sunk);color:var(--muted)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:14px;font-weight:600;z-index:60;max-width:90vw;text-align:center}
+
+/* lock screen */
+.lock{position:fixed;inset:0;z-index:40;background:var(--bg);overflow:auto;display:flex;align-items:flex-start;justify-content:center;
+  padding:max(40px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+.lockcard{width:100%;max-width:400px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px;display:flex;flex-direction:column;gap:14px}
+.lockcard h2{margin:0;font-family:var(--display);font-weight:800;font-size:22px}
+.people{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.people button{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:12px 6px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:2px}
+.people button small{font-weight:500;font-size:11px;color:var(--muted)}
+.people button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
+.people button[aria-pressed="true"] small{color:inherit;opacity:.85}
+.pin{font-size:22px;letter-spacing:.3em;text-align:center}
+@media (max-width:420px){.bal{padding:12px 10px}.bal span{font-size:10.5px}}
+@media (prefers-reduced-motion:no-preference){.sheet{animation:up .18s ease-out}@keyframes up{from{transform:translateY(16px);opacity:.6}}}
+
+html,body{margin:0}
+body{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.linkbtn{background:none;border:0;color:var(--accent);font-weight:600;font-size:14px;padding:4px;align-self:center}
+.offline{background:var(--sunk);color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="lock" id="lock">
+  <div class="lockcard" id="lockLoading"><div class="brand"><small>Premier Pools</small><h1>Cash Book</h1></div><p class="note" id="loadMsg">Opening…</p></div>
+  <form class="lockcard" id="lockLogin" hidden novalidate>
+    <div class="brand"><small>Premier Pools</small><h1>Cash Book</h1></div>
+    <h2>Who is signing in?</h2>
+    <div class="people" id="people"></div>
+    <label class="f">Email<input id="lEmail" type="email" inputmode="email" autocomplete="username" autocapitalize="none"></label>
+    <label class="f">Password<input id="lPass" type="password" autocomplete="current-password"></label>
+    <div class="err" id="lErr"></div>
+    <button class="primary" type="submit" id="lGo">Sign in</button>
+    <button class="linkbtn" type="button" id="lForgot">Forgot password?</button>
+  </form>
+</div>
+
+<div class="wrap" id="app" hidden>
+  <header>
+    <div class="brand"><small>Premier Pools</small><h1>Cash Book</h1></div>
+    <div class="head-actions">
+      <span class="me" id="meChip"></span>
+      <button class="ghost" id="btnCsv" hidden>Download CSV</button>
+      <button class="ghost" id="btnSettings">Opening balance</button>
+      
+      <button class="ghost" id="btnLock">Lock</button>
+    </div>
+  </header>
+
+  <div class="status" id="status" hidden></div>
+
+  <section class="balances num" id="balances" aria-label="Current balances"></section>
+
+  <section class="quick" id="quick" aria-label="Add entry"></section>
+  <div class="viewonly" id="viewOnly" hidden>Only Javed can add entries. Changes to saved entries need approval from Bhavesh and Jatin.</div>
+
+  <section class="approvals" id="approvals" hidden></section>
+
+  <section class="filters">
+    <div class="chips" id="periods"></div>
+    <div class="row2" id="custom" hidden>
+      <label class="note" for="fFrom">From</label><input type="date" id="fFrom">
+      <label class="note" for="fTo">To</label><input type="date" id="fTo">
+    </div>
+    <div class="row2">
+      <div class="seg" id="acct"></div>
+      <select id="fCat" aria-label="Category"><option value="">All categories</option></select>
+      <input class="search" id="fQ" type="search" placeholder="Search name, challan no., note…" aria-label="Search">
+    </div>
+    <div class="totals num" id="totals"></div>
+  </section>
+
+  <section class="ledger" id="ledger"></section>
+</div>
+
+<!-- NEW ENTRY / CHANGE REQUEST -->
+<div class="overlay" id="ovEntry" hidden>
+  <form class="sheet" id="formEntry" novalidate>
+    <h2 id="formTitle">New entry</h2>
+    <div class="types" id="typePick"></div>
+    <div class="grid">
+      <label class="f">Amount (₹)<input class="big num" id="eAmt" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0"></label>
+      <label class="f">Date<input id="eDate" type="date"></label>
+      <label class="f full" id="wrapCh">Challan no.<input id="eChallan" placeholder="e.g. PP/DC/0012" autocomplete="off" autocapitalize="characters"></label>
+      <label class="f full">Name / particulars<input id="eParty" list="partyList" placeholder="e.g. Shah Villa, Petrol, Ramesh (plumber)" autocomplete="off"></label>
+      <label class="f">Category<input id="eCat" list="catList" placeholder="Choose or type"></label>
+      <label class="f full" id="wrapAcc">A/c name<select id="eAcc"></select></label>
+      <label class="f" id="wrapMode">Paid via<select id="eMode"><option>UPI</option><option>NEFT</option><option>RTGS</option><option>IMPS</option><option>Cheque</option><option>Card</option></select></label>
+      <label class="f full" id="wrapRef">Ref / cheque / UTR no.<input id="eRef" placeholder="Optional"></label>
+      <label class="f full">Note<input id="eNote" placeholder="Optional"></label>
+      <label class="f full" id="wrapReason" hidden>Reason for change (Bhavesh and Jatin will see this)<input id="eReason" placeholder="e.g. Wrong amount typed"></label>
+    </div>
+    <p class="note" id="lockNote">Once saved, this entry is locked. Changing it later needs approval from Bhavesh and Jatin.</p>
+    <div class="err" id="eErr"></div>
+    <div class="actions">
+      <span></span>
+      <div class="r">
+        <button type="button" class="secondary" id="btnCancel">Cancel</button>
+        <button type="button" class="secondary" id="btnAgain">Save &amp; add another</button>
+        <button type="submit" class="primary" id="btnSave">Save</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<!-- VIEW LOCKED ENTRY -->
+<div class="overlay" id="ovView" hidden>
+  <div class="sheet">
+    <h2 id="vTitle">Entry</h2>
+    <dl class="facts num" id="vFacts"></dl>
+    <div class="lockline" id="vLock"></div>
+    <div id="vHistWrap" hidden><h3>Change history</h3><div class="hist" id="vHist"></div></div>
+    <div id="vDelBox" hidden style="display:flex;flex-direction:column;gap:8px">
+      <label class="f">Reason for deleting<input id="vReason" placeholder="e.g. Entered twice"></label>
+    </div>
+    <div class="err" id="vErr"></div>
+    <div class="actions">
+      <div class="r" id="vReqBtns">
+        <button type="button" class="secondary" id="vEdit">Request change</button>
+        <button type="button" class="danger" id="vDel">Request delete</button>
+      </div>
+      <button type="button" class="secondary" id="vClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- OPENING BALANCE -->
+<div class="overlay" id="ovSet" hidden>
+  <form class="sheet" id="formSet" novalidate>
+    <h2>Opening balance</h2>
+    <p class="note" id="sNote"></p>
+    <div class="grid" id="setGrid"></div>
+    <label class="f" id="wrapSReason" hidden>Reason for change<input id="sReason"></label>
+    <div class="err" id="sErr"></div>
+    <div class="actions"><span></span><div class="r">
+      <button type="button" class="secondary" id="sCancel">Close</button>
+      <button type="submit" class="primary" id="sSave">Save</button>
+    </div></div>
+  </form>
+</div>
+
+
+<datalist id="partyList"></datalist>
+<datalist id="catList"></datalist>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script>if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));</script>
+</body>
+</html>
