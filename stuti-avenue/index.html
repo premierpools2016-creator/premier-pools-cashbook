@@ -1774,6 +1774,9 @@ const CLOUD_KEY="stuti-avenue-cloud";
 const CLOUD={on:false, setup:null, user:null, email:"", roles:null, started:false};
 let ROLE="admin", fdb=null, fauth=null;
 try{ CLOUD.setup=JSON.parse(localStorage.getItem(CLOUD_KEY)||"null"); }catch(e){ CLOUD.setup=null; }
+/* built-in connection (like the challan app's config.js): members just open the link */
+const BUILTIN={"config": {"apiKey": "AIzaSyDGeAVzR8TPZbGxzZHl2YY_E9HCFjJS0YA", "authDomain": "stuti-avenue.firebaseapp.com", "projectId": "stuti-avenue", "storageBucket": "stuti-avenue.firebasestorage.app", "messagingSenderId": "88973744729", "appId": "1:88973744729:web:47ff1b1db44910ee04af48"}, "admin": "stutiavenuetp14@gmail.com", "entry": ["stutiavenue_1@gmail.com", "stutiavenue_2@gmail.com", "stutiavenue_3@gmail.com"]};
+if(BUILTIN && BUILTIN.config && BUILTIN.admin && !(CLOUD.setup && CLOUD.setup.local)) CLOUD.setup={config:BUILTIN.config,setupAdmin:BUILTIN.admin};
 // invite link: #join=<base64 config>
 (function(){
   const h=location.hash||""; if(!h.startsWith("#join=")) return;
@@ -1837,7 +1840,7 @@ function watchRoles(){
   rolesUnsub=fdb.doc("meta/roles").onSnapshot(s=>{
     if(!s.exists){
       if(CLOUD.email && CLOUD.email===lc(CLOUD.setup.setupAdmin)){
-        fdb.doc("meta/roles").set({admin:CLOUD.email,entry:[],viewers:[],extra:[]}).catch(err=>gate("Publish the security rules first",
+        fdb.doc("meta/roles").set({admin:CLOUD.email,entry:(BUILTIN&&BUILTIN.entry)||[],viewers:[],extra:[]}).catch(err=>gate("Publish the security rules first",
           `Firebase refused to save. Open Firebase → Firestore Database → Rules, paste the rules copied from this app (they must contain <b>${esc(CLOUD.email)}</b>) and press Publish. Then tap Try again.<br><span class="muted">${esc(err.message)}</span>`,
           [{label:"Copy security rules",fn:()=>copyText(rulesText(CLOUD.email),$("gMsg"),"Rules copied.")},{label:"Try again",fn:()=>location.reload()},{label:"Sign out",ghost:true,fn:signOut}]));
       } else notRegistered("The society's online records are not set up yet. Ask the secretary for the invite link.");
