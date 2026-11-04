@@ -1,0 +1,2344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#2340a8">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Stuti Avenue Receipts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+/* Layout: receipt-book desk — form on the left, live carbon-copy preview on the right; stacks on phones */
+:root{
+  --bg:#eef1f6; --paper:#ffffff; --ink:#18213a; --muted:#5d6886; --line:#d5dbe7;
+  --carbon:#2340a8; --carbon-soft:#e3e9fb; --stamp:#1f7a4d; --stamp-soft:#dff2e8; --danger:#b3261e;
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --body:"Source Sans 3",ui-sans-serif,system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1422; --paper:#182036; --ink:#e7ebf5; --muted:#9aa5c2; --line:#2c3652;
+  --carbon:#8ea6ff; --carbon-soft:#22305a; --stamp:#5fd29a; --stamp-soft:#173a2a; --danger:#ff8a80; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1422; --paper:#182036; --ink:#e7ebf5; --muted:#9aa5c2; --line:#2c3652;
+  --carbon:#8ea6ff; --carbon-soft:#22305a; --stamp:#5fd29a; --stamp-soft:#173a2a; --danger:#ff8a80; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45}
+.wrap{max-width:1180px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:18px}
+.brand h1{font-family:var(--display);font-weight:800;font-size:clamp(22px,4vw,30px);margin:0;letter-spacing:-.01em;text-wrap:balance}
+.brand p{margin:2px 0 0;color:var(--muted);font-size:13px;text-transform:uppercase;letter-spacing:.08em}
+nav.tabs{display:flex;gap:4px;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:4px}
+nav.tabs button{border:0;background:none;color:var(--muted);font:600 14px var(--body);padding:8px 14px;border-radius:7px;cursor:pointer}
+nav.tabs button[aria-selected="true"]{background:var(--carbon);color:var(--paper)}
+.banner{background:var(--carbon-soft);color:var(--ink);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:14px}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:20px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:20px;min-width:0}
+.panel h2{font-family:var(--display);font-weight:600;font-size:18px;margin:0 0 14px}
+.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px}
+.fields .full{grid-column:1/-1}
+@media (max-width:480px){.fields{grid-template-columns:minmax(0,1fr)}}
+label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+input,select,textarea{font:400 15px var(--body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:9px 10px;width:100%;text-transform:none;letter-spacing:0}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--carbon);outline-offset:1px}
+fieldset{border:1px dashed var(--line);border-radius:9px;padding:12px;margin:0;grid-column:1/-1}
+legend{font-size:12px;font-weight:700;color:var(--carbon);text-transform:uppercase;letter-spacing:.08em;padding:0 6px}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg label{flex-direction:row;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:14px;color:var(--ink);font-weight:600}
+.seg input{width:auto;accent-color:var(--carbon)}
+.seg label:has(input:checked){background:var(--carbon-soft);border-color:var(--carbon)}
+.total{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-top:16px;padding:14px 16px;background:var(--stamp-soft);border-radius:9px}
+.total span{font-size:13px;color:var(--muted)}
+.total strong{font-family:var(--mono);font-size:24px;color:var(--stamp);font-variant-numeric:tabular-nums}
+.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+.btn{border:1px solid var(--carbon);background:var(--carbon);color:var(--paper);font:700 15px var(--body);padding:11px 18px;border-radius:8px;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--carbon)}
+.btn.danger{border-color:var(--danger);background:transparent;color:var(--danger)}
+.btn.small{padding:6px 10px;font-size:13px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.msg{font-size:14px;margin-top:10px;min-height:1.4em}
+.msg.err{color:var(--danger)} .msg.ok{color:var(--stamp)}
+/* receipt preview */
+.sheet{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:18px 20px;font-size:13px}
+.copy{position:relative}
+.copy+.copy{border-top:2px dashed var(--line);margin-top:16px;padding-top:16px}
+.copy .tag{position:absolute;right:0;top:0;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--carbon);border:1px solid var(--carbon);border-radius:4px;padding:2px 6px}
+.copy+.copy .tag{top:16px}
+.copy h3{font-family:var(--display);font-weight:800;font-size:16px;margin:0;text-align:center;padding:0 70px}
+.copy .sub{text-align:center;color:var(--muted);font-size:11px;margin-top:2px}
+.copy .title{text-align:center;font-weight:700;letter-spacing:.14em;font-size:11px;margin:8px 0;color:var(--carbon)}
+.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 12px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.sign{display:flex;justify-content:space-between;gap:10px;margin-top:18px;font-size:11px;color:var(--muted)}
+.sign div{border-top:1px solid var(--line);padding-top:3px;flex:1;text-align:center}
+.hint{color:var(--muted);font-size:13px;margin:8px 0 0}
+/* tables */
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;min-width:640px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);background:var(--bg);font-weight:700}
+tr:last-child td{border-bottom:0}
+td input,td select{padding:6px 8px;font-size:14px}
+td.flat input{width:80px;font-family:var(--mono)}
+.pill{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px}
+.pill.self{background:var(--stamp-soft);color:var(--stamp)} .pill.rented{background:var(--carbon-soft);color:var(--carbon)}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px}
+.toolbar input{max-width:260px}
+.stats{display:flex;flex-wrap:wrap;gap:18px;font-size:14px;color:var(--muted)}
+.stats b{color:var(--ink);font-family:var(--mono)}
+.confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+.stbox textarea{flex:1 1 100%;font-family:var(--body);font-size:14px;line-height:1.45}
+.stbox label{flex:1 1 200px}
+.acct{font-size:12px;color:var(--muted);margin-top:6px;overflow-wrap:anywhere}
+.linkbtn{all:unset;color:var(--carbon);font-weight:700;cursor:pointer;text-decoration:underline}
+.errbar{background:var(--bad-soft);color:var(--ink)}
+.gate{position:fixed;inset:0;z-index:60;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.gcard{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:24px;max-width:440px;width:100%;display:grid;gap:10px}
+.gcard h2{font-family:var(--display);margin:0;font-size:22px}
+.gcard p{margin:0}
+.steps{margin:0 0 12px;padding-left:20px;display:grid;gap:6px;font-size:14px}
+.reply{background:var(--carbon-soft);border-radius:8px;padding:6px 10px;font-size:14px}
+.cpManage{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center}
+.cpManage select{width:auto;flex:0 0 auto;padding:6px 8px}
+.cpManage input{flex:1 1 160px;width:auto;padding:6px 8px}
+.role-entry [data-del],.role-entry #addFlat,.role-entry #saveMembers,.role-entry [data-rdel],.role-entry [data-exedit],.role-entry [data-exdel],.role-entry .more,
+.role-entry [data-rmedit],.role-entry [data-rmdel],.role-entry [data-tkedit],.role-entry [data-tkdel],.role-entry [data-tkopen],.role-entry [data-ctedit],.role-entry [data-ctdel],
+.role-entry [data-dcdel],.role-entry [data-cpdel],.role-entry button[data-tab="settings"],.role-entry button[data-tab="backup"],
+.role-viewer [data-del],.role-viewer #addFlat,.role-viewer #saveMembers,.role-viewer [data-rdel],.role-viewer [data-exedit],.role-viewer [data-exdel],.role-viewer .more,
+.role-viewer [data-rmedit],.role-viewer [data-rmdel],.role-viewer [data-tkedit],.role-viewer [data-tkdel],.role-viewer [data-tkopen],.role-viewer [data-ctedit],.role-viewer [data-ctdel],
+.role-viewer [data-dcdel],.role-viewer [data-cpdel],.role-viewer button[data-tab="settings"],.role-viewer button[data-tab="backup"],
+.role-viewer button[data-tab="receipt"],.role-viewer #exForm,.role-viewer #rmForm,.role-viewer #tkForm,.role-viewer #ctForm,.role-viewer #dcForm,
+.role-viewer [data-rmdone],.role-viewer [data-tkdone],.role-viewer .cpManage{display:none!important}
+.role-viewer #tab-expenses .grid,.role-viewer #tab-contacts .grid,.role-viewer #tab-docs .grid{grid-template-columns:minmax(0,1fr)}
+
+:root{--warn:#8a5a00;--warn-soft:#fff3d1;--bad-soft:#fde3e1}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--warn:#f2c14e;--warn-soft:#3a2f12;--bad-soft:#3d1c1a}}
+:root[data-theme="dark"]{--warn:#f2c14e;--warn-soft:#3a2f12;--bad-soft:#3d1c1a}
+nav.tabs{flex-wrap:wrap}
+.links{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.cards{display:grid;gap:10px}
+.card{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--paper);display:grid;gap:3px;min-width:0}
+.card.done{opacity:.6}
+.crow{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;min-width:0}
+.crow.cfoot{flex-wrap:wrap;align-items:center;margin-top:6px}
+.ctitle{font-weight:700;font-size:15px;overflow-wrap:anywhere}
+.muted{color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--carbon);font-weight:700}
+.amt{font-size:15px;white-space:nowrap}
+.chip{border:1px solid var(--carbon);color:var(--carbon);background:var(--carbon-soft);border-radius:999px;padding:4px 11px;font:600 12px var(--body);cursor:pointer}
+.warnchip{border-color:var(--line);color:var(--muted);background:transparent;cursor:default}
+.pill{white-space:nowrap}
+.pill.st-bad{background:var(--bad-soft);color:var(--danger)}
+.pill.st-warn{background:var(--warn-soft);color:var(--warn)}
+.pill.st-ok{background:var(--stamp-soft);color:var(--stamp)}
+.pill.st-none{background:var(--bg);color:var(--muted)}
+.filters{display:flex;flex-wrap:wrap;gap:8px}
+.filters>*{flex:1 1 140px;width:auto;min-width:0}
+.thumbs{display:flex;flex-wrap:wrap;gap:10px}
+.thumbs:empty{display:none}
+.thumb{position:relative;width:92px;display:grid;gap:3px;font-size:11px;color:var(--muted)}
+.thumb img{width:92px;height:92px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:pointer;background:var(--bg)}
+.thumb>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.thumb .x{position:absolute;top:-7px;right:-7px;width:26px;height:26px;border-radius:50%;border:0;background:var(--danger);color:var(--paper);font-size:17px;line-height:1;cursor:pointer}
+.pdfchip{width:92px;height:92px;display:flex;align-items:center;justify-content:center;border-radius:8px;border:1px solid var(--line);background:var(--carbon-soft);color:var(--carbon);font:700 14px var(--body);cursor:pointer}
+.alerts{background:var(--warn-soft);border:1px solid var(--warn);border-radius:10px;padding:10px 14px;margin-bottom:14px;display:grid;gap:2px}
+.altitle{font-weight:700;color:var(--warn);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+.alrow{all:unset;cursor:pointer;font-size:14px;color:var(--ink);padding:4px 0;border-bottom:1px dashed var(--line)}
+.alrow:last-of-type{border-bottom:0}
+.alrow:focus-visible{outline:2px solid var(--carbon)}
+.folder{margin-bottom:16px;display:grid;gap:8px}
+.fhead{font-weight:700;color:var(--carbon);font-size:13px;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--line);padding-bottom:4px}
+.more{margin-top:14px}
+.more summary{cursor:pointer;font-weight:600;color:var(--carbon);padding:6px 0}
+textarea{font:400 14px var(--body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:9px 10px;width:100%}
+.phone{color:var(--carbon);font-weight:700;text-decoration:none}
+.viewer{position:fixed;inset:0;z-index:50;background:rgba(10,14,25,.94);display:flex;flex-direction:column;padding:env(safe-area-inset-top,0px) max(12px,env(safe-area-inset-right,0px)) env(safe-area-inset-bottom,0px) max(12px,env(safe-area-inset-left,0px))}
+.vbar{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;color:#fff}
+.vbar b{overflow-wrap:anywhere;font-size:14px}
+.vbody{flex:1;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding-bottom:12px}
+.vbody img{max-width:100%;height:auto;background:#fff;border-radius:4px}
+.vpdf{background:var(--paper);color:var(--ink);border-radius:12px;padding:20px;margin-top:20px;text-align:center}
+.vpdf a.btn{display:inline-block}
+
+.ledger{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 14px;padding:14px;margin-bottom:14px;border:1px dashed var(--carbon);border-radius:10px;background:var(--carbon-soft)}
+.ledger .lgtext{flex:1 1 100%;display:flex;flex-direction:column;gap:2px;font-size:14px}
+.ledger .lgtext span{color:var(--muted);font-size:13px}
+.ledger label{flex:1 1 140px}
+.lgbtns{display:flex;flex-wrap:wrap;gap:8px}
+.xchk{flex-direction:row!important;align-items:center;gap:8px;text-transform:none!important;letter-spacing:0!important;font-size:14px!important;color:var(--ink)!important;font-weight:600}
+.xchk input{width:auto;accent-color:var(--carbon);transform:scale(1.15)}
+.incm{padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--carbon-soft)}
+.extras{display:grid;gap:6px}
+.xrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;padding:4px 0;border-bottom:1px solid var(--line)}
+.xrow:last-child{border-bottom:0}
+.xrow .xchk{flex:1 1 180px}
+.xrow .xamt{width:110px;flex:0 0 110px;text-align:right}
+.xrow .xdesc{flex:1 1 160px;width:auto}
+.xrow .xdue{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.xrow .xdue input{width:auto;padding:5px 6px}
+table.parts{min-width:0;width:100%;margin-top:8px;font-size:12px;border-collapse:collapse}
+table.parts th,table.parts td{padding:3px 6px;border-bottom:1px solid var(--line)}
+table.parts th{background:var(--carbon-soft);color:var(--carbon);font-size:10px}
+table.parts th:last-child,table.parts td.num{text-align:right}
+table.parts tfoot td{font-weight:700;border-top:1.5px solid var(--ink);border-bottom:0;color:var(--stamp);font-size:13px}
+.words{font-size:12px;margin-top:4px;font-style:italic}
+.share{margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:9px;background:var(--bg)}
+.share p{margin:0 0 8px;font-size:13px;color:var(--muted)}
+.share .links{display:flex;flex-wrap:wrap;gap:8px}
+a.btn{display:inline-block;text-decoration:none;text-align:center}
+a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1 id="socName">Stuti Avenue Co-op. Housing Service Society</h1>
+      <p>Receipts · expenses · society records · 20 flats</p>
+      <div id="acct" class="acct" hidden></div>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="receipt" aria-selected="true">New receipt</button>
+      <button role="tab" data-tab="history" aria-selected="false">Receipts issued</button>
+      <button role="tab" data-tab="members" aria-selected="false">Members</button>
+      <button role="tab" data-tab="expenses" aria-selected="false">Expenses</button>
+      <button role="tab" data-tab="tasks" aria-selected="false">Tasks &amp; alerts</button>
+      <button role="tab" data-tab="contacts" aria-selected="false">Contacts</button>
+      <button role="tab" data-tab="docs" aria-selected="false">Documents</button>
+      <button role="tab" data-tab="complaints" aria-selected="false">Complaints</button>
+      <button role="tab" data-tab="reports" aria-selected="false">Reports</button>
+      <button role="tab" data-tab="settings" aria-selected="false">Settings</button>
+      <button role="tab" data-tab="backup" aria-selected="false">Backup</button>
+    </nav>
+  </header>
+  <div id="banner" class="banner" hidden></div>
+  <div id="cloudbar" class="banner" hidden></div>
+  <div id="alerts" class="alerts" hidden></div>
+
+  <!-- RECEIPT -->
+  <section id="tab-receipt">
+    <div class="grid">
+      <form class="panel" id="rForm" autocomplete="off">
+        <h2>Receipt details</h2>
+        <div class="fields">
+          <label>Receipt no.<input id="rSeq" class="num" type="number" min="1" required></label>
+          <label>Date<input id="rDate" type="date" required></label>
+          <label class="full">Flat / member
+            <select id="rMember" required><option value="">Select flat…</option></select>
+          </label>
+          <label>Member name<input id="rName" required></label>
+          <label>Mobile<input id="rMobile" inputmode="numeric" maxlength="10"></label>
+          <label>Email<input id="rEmail" type="email" placeholder="Optional"></label>
+          <label>Rented or self
+            <select id="rOcc"><option value="self">Self (owner)</option><option value="rented">Rented</option></select>
+          </label>
+          <label>Rate / month (Rs.)<input id="rRate" class="num" readonly></label>
+          <label class="full xchk incm"><input type="checkbox" id="rIncMaint" checked> Include maintenance for a period</label>
+          <div class="fields full" id="periodBox">
+            <label>Period from<input id="rFrom" type="date"></label>
+            <label>Period to<input id="rTo" type="date"></label>
+            <p class="hint full" id="periodHint" style="margin:-4px 0 0">Pick the start date; the end date fills in 6 months later. You can change either date.</p>
+          </div>
+          <fieldset>
+            <legend>Other charges</legend>
+            <div id="extras" class="extras"></div>
+            <p class="hint" id="penaltyHint"></p>
+          </fieldset>
+          <fieldset>
+            <legend>Payment method</legend>
+            <div class="seg" id="rMethod">
+              <label><input type="radio" name="method" value="Online" checked> Online</label>
+              <label><input type="radio" name="method" value="Cash"> Cash</label>
+              <label><input type="radio" name="method" value="Cheque"> Cheque deposit</label>
+            </div>
+            <div class="fields" id="onlineBox" style="margin-top:12px">
+              <label>UPI / transaction ref.<input id="rTxn"></label>
+              <label>Paid via<select id="rApp"><option>UPI</option><option>NEFT / IMPS</option><option>RTGS</option><option>Other</option></select></label>
+            </div>
+            <div class="fields" id="chequeBox" style="margin-top:12px" hidden>
+              <label>Cheque no.<input id="rChqNo" class="num" inputmode="numeric" maxlength="6"></label>
+              <label>Cheque date<input id="rChqDate" type="date"></label>
+              <label>Bank name<input id="rBank"></label>
+              <label>Branch<input id="rBranch"></label>
+            </div>
+          </fieldset>
+          <label class="full">Remarks<input id="rRemarks" placeholder="Optional"></label>
+        </div>
+        <div class="total"><span id="calcLine">Rs. 1,400 × 6 months</span><strong id="amt">Rs. 8,400</strong></div>
+        <div class="actions">
+          <button class="btn" type="submit" id="saveBtn">Save &amp; download PDF</button>
+          <button class="btn ghost" type="button" id="resetBtn">Clear form</button>
+        </div>
+        <div class="msg" id="rMsg" role="status"></div>
+        <div class="share" id="shareBar" hidden></div>
+      </form>
+
+      <div class="panel">
+        <h2>Print preview · A4, two copies</h2>
+        <div class="sheet" id="preview"></div>
+        <p class="hint">The PDF puts the Member copy on the top half and the Society copy on the bottom half, with a cut line between them.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- MEMBERS -->
+  <section id="tab-members" hidden>
+    <div class="panel">
+      <div class="toolbar">
+        <h2 style="margin:0">Member register</h2>
+        <div class="stats" id="memStats"></div>
+      </div>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>Flat no.</th><th>Member name</th><th>Mobile</th><th>Email</th><th>Rented / self</th><th>Rate</th><th></th></tr></thead>
+          <tbody id="memBody"></tbody>
+        </table>
+      </div>
+      <div class="actions">
+        <button class="btn ghost" id="addFlat" type="button">Add flat</button>
+        <button class="btn" id="saveMembers" type="button">Save changes</button>
+      </div>
+      <div class="msg" id="mMsg" role="status"></div>
+    </div>
+  </section>
+
+  <!-- HISTORY -->
+  <section id="tab-history" hidden>
+    <div class="panel">
+      <div class="toolbar">
+        <h2 style="margin:0">Receipts issued</h2>
+        <input id="hSearch" placeholder="Search name, flat, receipt no.">
+      </div>
+      <div class="ledger">
+        <div class="lgtext"><b>Ledger PDF</b><span>All members' payments in one report: a summary per flat, then every receipt flat by flat.</span></div>
+        <label>From<input type="date" id="lgFrom"></label>
+        <label>To<input type="date" id="lgTo"></label>
+        <div class="lgbtns"><button class="btn" type="button" id="lgBtn">Download ledger PDF</button><button class="btn ghost" type="button" id="lgShare">Share ledger</button></div>
+      </div>
+      <div class="ledger stbox">
+        <div class="lgtext"><b>Group status message: who has paid</b><span>Floor-wise list for the society WhatsApp group. Paid flats show amount, mode and date; unpaid flats are left blank. Send it again after every payment.</span></div>
+        <label style="flex:1 1 100%">Maintenance period<select id="stPeriod"></select></label>
+        <label class="xchk"><input type="checkbox" id="stSum" checked> Add paid / pending summary</label>
+        <textarea id="stText" rows="12" aria-label="Message"></textarea>
+        <div class="lgbtns"><a class="btn wa" id="stWA" href="#" target="_blank" rel="noopener">Send to WhatsApp group</a><button class="btn ghost" type="button" id="stCopy">Copy</button></div>
+        <p class="hint" style="margin:0;flex:1 1 100%">You can edit the text before sending. Notes typed in a receipt's Remarks (e.g. electricity bill adjustments) appear next to that flat.</p>
+      </div>
+      <div class="stats" id="hStats" style="margin-bottom:12px"></div>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>Receipt</th><th>Date</th><th>Flat</th><th>Name</th><th>Period</th><th>Mode</th><th style="text-align:right">Amount</th><th></th></tr></thead>
+          <tbody id="hBody"></tbody>
+        </table>
+      </div>
+      <div class="msg" id="hMsg" role="status"></div>
+    </div>
+  </section>
+
+  <!-- EXPENSES -->
+  <section id="tab-expenses" hidden>
+    <div class="grid">
+      <form class="panel" id="exForm" autocomplete="off">
+        <h2 id="exTitle">New expense entry</h2>
+        <div class="fields">
+          <label>Voucher no.<input id="exNo" class="num" readonly></label>
+          <label>Date paid<input id="exDate" type="date" required></label>
+          <label class="full">Expense head<select id="exHead"></select></label>
+          <label class="full" id="exOtherBox" hidden>What is this expense for?<input id="exOther"></label>
+          <label>Paid to (party)<input id="exParty" list="exParties" placeholder="e.g. DGVCL, lift company"></label>
+          <datalist id="exParties"></datalist>
+          <label>Bill / invoice no.<input id="exBill"></label>
+          <label>Bill period<input id="exPeriod" placeholder="e.g. Sep–Oct 2026"></label>
+          <label>Amount (Rs.)<input id="exAmt" type="number" min="0" step="1" class="num" required></label>
+          <fieldset>
+            <legend>Paid by</legend>
+            <div class="seg">
+              <label><input type="radio" name="exMethod" value="Cash" checked> Cash</label>
+              <label><input type="radio" name="exMethod" value="Online"> Online</label>
+              <label><input type="radio" name="exMethod" value="Cheque"> Cheque</label>
+            </div>
+            <div class="fields" id="exRefBox" style="margin-top:12px" hidden>
+              <label id="exRefLbl">Transaction ref.<input id="exRef"></label>
+              <label id="exBankLbl">Bank<input id="exBank"></label>
+            </div>
+          </fieldset>
+          <label class="full">Attach bill / receipt from the party (photo or PDF)
+            <input id="exFiles" type="file" accept="image/*,application/pdf" multiple>
+          </label>
+          <div class="full thumbs" id="exThumbs"></div>
+          <label class="full">Remarks<input id="exRemarks" placeholder="Optional"></label>
+        </div>
+        <div class="actions">
+          <button class="btn" type="submit" id="exSave">Save expense</button>
+          <button class="btn ghost" type="button" id="exCancel">Clear</button>
+        </div>
+        <div class="msg" id="exMsg" role="status"></div>
+      </form>
+
+      <div class="panel">
+        <h2>Expense book</h2>
+        <div class="filters">
+          <select id="exFMonth" aria-label="Month"></select>
+          <select id="exFHead" aria-label="Head"></select>
+          <input id="exFSearch" placeholder="Search party, bill no.">
+        </div>
+        <div class="stats" id="exStats" style="margin:10px 0"></div>
+        <div class="cards" id="exList"></div>
+
+        <div class="ledger" style="margin-top:16px">
+          <div class="lgtext"><b>Expense register PDF</b><span>Head-wise totals, every voucher, and maintenance collected against expenses for the dates you choose.</span></div>
+          <label>From<input type="date" id="exRFrom"></label>
+          <label>To<input type="date" id="exRTo"></label>
+          <label class="xchk" style="flex:1 1 100%"><input type="checkbox" id="exRPhotos" checked> Add bill photos at the end</label>
+          <div class="lgbtns"><button class="btn" type="button" id="exRDown">Download register PDF</button><button class="btn ghost" type="button" id="exRShare">Share register</button></div>
+        </div>
+        <details class="more">
+          <summary>Edit expense heads</summary>
+          <p class="hint">One head per line. These appear in the Expense head list.</p>
+          <textarea id="exHeadsTxt" rows="9"></textarea>
+          <div class="actions"><button class="btn small" type="button" id="exHeadsSave">Save heads</button></div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- TASKS & ALERTS -->
+  <section id="tab-tasks" hidden>
+    <div class="grid">
+      <div class="panel">
+        <h2>Alerts &amp; reminders</h2>
+        <form id="rmForm" class="fields" autocomplete="off">
+          <label class="full">Reminder<input id="rmTitle" placeholder="e.g. Overhead tank cleaning" required></label>
+          <label>Next due date<input id="rmDue" type="date"></label>
+          <label>Repeats
+            <select id="rmEvery"><option value="0">One time</option><option value="1">Every month</option><option value="2">Every 2 months</option><option value="3">Every 3 months</option><option value="4">Every 4 months</option><option value="6">Every 6 months</option><option value="12">Every year</option></select>
+          </label>
+          <label>Alert days before<input id="rmBefore" type="number" min="0" max="60" class="num"></label>
+          <label>Notes<input id="rmNotes" placeholder="Contractor, phone, cost…"></label>
+          <div class="actions full" style="margin-top:4px"><button class="btn" type="submit" id="rmSave">Save reminder</button><button class="btn ghost" type="button" id="rmCancel">Clear</button></div>
+        </form>
+        <div class="msg" id="rmMsg" role="status"></div>
+        <div class="cards" id="rmList" style="margin-top:12px"></div>
+        <p class="hint">Alerts show at the top of the app when a reminder is due. For a phone alert even when the app is closed, tap <b>Google Calendar</b> on a reminder and save the event.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Task distribution</h2>
+        <form id="tkForm" class="fields" autocomplete="off">
+          <label class="full">Task<input id="tkTitle" placeholder="e.g. Get lift AMC quotation" required></label>
+          <label>Assigned to<select id="tkWho"></select></label>
+          <label>Due date<input id="tkDue" type="date"></label>
+          <label class="full">Details<input id="tkNotes" placeholder="Optional"></label>
+          <div class="actions full" style="margin-top:4px"><button class="btn" type="submit" id="tkSave">Save task</button><button class="btn ghost" type="button" id="tkCancel">Clear</button></div>
+        </form>
+        <div class="msg" id="tkMsg" role="status"></div>
+        <div class="seg" id="tkFilter" style="margin:12px 0 8px">
+          <label><input type="radio" name="tkF" value="open" checked> Open</label>
+          <label><input type="radio" name="tkF" value="done"> Done</label>
+          <label><input type="radio" name="tkF" value="all"> All</label>
+        </div>
+        <div class="cards" id="tkList"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTACTS -->
+  <section id="tab-contacts" hidden>
+    <div class="grid">
+      <form class="panel" id="ctForm" autocomplete="off">
+        <h2 id="ctTitle">Add contact</h2>
+        <div class="fields">
+          <label>Service<input id="ctRole" list="ctRoles" placeholder="e.g. Plumber" required></label>
+          <datalist id="ctRoles"><option>Plumber</option><option>Electrician</option><option>Lift maintenance</option><option>Watchman</option><option>Cleaning agency</option><option>Housekeeping</option><option>Water tanker</option><option>Pest control</option><option>Carpenter</option><option>Fire safety</option><option>Society lawyer</option><option>Auditor</option></datalist>
+          <label>Name / company<input id="ctName"></label>
+          <label>Mobile<input id="ctPhone" inputmode="tel"></label>
+          <label>Other number<input id="ctAlt" inputmode="tel"></label>
+          <label class="full">Notes<input id="ctNotes" placeholder="Timings, rate, contract details…"></label>
+        </div>
+        <div class="actions"><button class="btn" type="submit" id="ctSave">Save contact</button><button class="btn ghost" type="button" id="ctCancel">Clear</button></div>
+        <div class="msg" id="ctMsg" role="status"></div>
+      </form>
+      <div class="panel">
+        <h2>Important phone numbers</h2>
+        <div class="cards" id="ctList"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DOCUMENTS -->
+  <section id="tab-docs" hidden>
+    <div class="grid">
+      <form class="panel" id="dcForm" autocomplete="off">
+        <h2>Add document</h2>
+        <div class="fields">
+          <label class="full">Document name<input id="dcTitle" placeholder="e.g. Registration certificate" required></label>
+          <label>Folder<select id="dcCat"></select></label>
+          <label>Document date<input id="dcDate" type="date"></label>
+          <label class="full">File: a PDF, or photos of the pages
+            <input id="dcFiles" type="file" accept="application/pdf,image/*" multiple required>
+          </label>
+          <p class="hint full" style="margin:-4px 0 0">Photos of several pages are joined into one PDF, in the order you pick them.</p>
+          <label class="full">Notes<input id="dcNotes" placeholder="Optional"></label>
+        </div>
+        <div class="actions"><button class="btn" type="submit" id="dcSave">Save document</button></div>
+        <div class="msg" id="dcMsg" role="status"></div>
+      </form>
+      <div class="panel">
+        <div class="toolbar"><h2 style="margin:0">Society documents</h2><input id="dcSearch" placeholder="Search documents"></div>
+        <div id="dcList"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SIGN-IN GATE -->
+  <div id="gate" class="gate" hidden><div class="gcard"><div class="eyebrow">Stuti Avenue society app</div><h2 id="gTitle"></h2><p id="gText"></p><div class="links" id="gBtns"></div><div class="msg err" id="gMsg" role="status"></div></div></div>
+
+  <!-- FILE VIEWER -->
+  <div id="viewer" class="viewer" hidden>
+    <div class="vbar"><b id="vName"></b><div class="links"><button class="btn small" type="button" id="vShare">Share</button><button class="btn ghost small" type="button" id="vSave">Save</button><button class="btn ghost small" type="button" id="vClose">Close</button></div></div>
+    <div class="vbody" id="vBody"></div>
+  </div>
+
+  <!-- COMPLAINTS -->
+  <section id="tab-complaints" hidden>
+    <div class="grid">
+      <form class="panel" id="cpForm" autocomplete="off">
+        <h2>Complaint &amp; suggestion box</h2>
+        <div class="fields">
+          <label>Type<select id="cpKind"><option>Complaint</option><option>Suggestion</option></select></label>
+          <label>About<select id="cpCat"><option>Water supply</option><option>Electricity / light</option><option>Lift</option><option>Cleanliness</option><option>Security / watchman</option><option>Parking</option><option>Leakage / plumbing</option><option>Noise / neighbours</option><option>Municipality / outside</option><option>Accounts / maintenance</option><option>Other</option></select></label>
+          <label class="full">Flat<select id="cpFlat"></select></label>
+          <label class="full">Details<textarea id="cpText" rows="4" placeholder="e.g. Today water is not given by the municipality."></textarea></label>
+        </div>
+        <div class="actions"><button class="btn" type="submit" id="cpSave">Post</button></div>
+        <div class="msg" id="cpMsg" role="status"></div>
+        <div class="share" id="cpShare" hidden></div>
+      </form>
+      <div class="panel">
+        <h2>All complaints &amp; suggestions</h2>
+        <div class="seg">
+          <label><input type="radio" name="cpF" value="open" checked> Open</label>
+          <label><input type="radio" name="cpF" value="closed"> Resolved</label>
+          <label><input type="radio" name="cpF" value="all"> All</label>
+        </div>
+        <div class="stats" id="cpStats" style="margin:10px 0"></div>
+        <div class="cards" id="cpList"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- REPORTS -->
+  <section id="tab-reports" hidden>
+    <div class="panel" style="max-width:760px">
+      <h2>Society audit report</h2>
+      <p style="margin:0 0 12px">One PDF with everything for the auditor and the members: summary and closing balance, income and expenditure, month-wise receipts and payments, maintenance dues per flat, member ledger, receipt register, expense register and complaints.</p>
+      <div class="fields">
+        <label>Financial year<select id="auFY"></select></label>
+        <label>Opening balance, cash + bank (Rs.)<input id="auOpen" type="number" min="0" class="num" placeholder="0"></label>
+        <label class="xchk full"><input type="checkbox" id="auPhotos"> Add bill photos at the end (bigger file)</label>
+      </div>
+      <div class="stats" id="auStats" style="margin:12px 0"></div>
+      <div class="actions">
+        <button class="btn" type="button" id="auDown">Download audit report</button>
+        <button class="btn wa" type="button" id="auShare">Send to WhatsApp group</button>
+      </div>
+      <div class="msg" id="auMsg" role="status"></div>
+      <p class="hint">Send to WhatsApp group opens the phone's share menu with the PDF: choose WhatsApp, then the society group. Only the admin can change the opening balance.</p>
+    </div>
+  </section>
+
+  <!-- BACKUP -->
+  <section id="tab-backup" hidden>
+    <div class="panel" style="max-width:720px">
+      <h2>Backup &amp; restore</h2>
+      <p style="margin:0 0 12px">All members, receipts, expenses with bill photos, tasks, contacts and documents are saved on this phone only. Save a backup file to JioCloud after every few entries, so nothing is lost if the phone is changed, reset or the browser data is cleared.</p>
+      <div class="stats" id="bkStats" style="margin-bottom:6px"></div>
+      <div class="actions">
+        <button class="btn" type="button" id="bkShare">Save backup to JioCloud</button>
+        <button class="btn ghost" type="button" id="bkDownload">Download backup file</button>
+        <button class="btn ghost" type="button" id="bkPick">Restore from backup</button>
+        <input type="file" id="bkFile" accept=".json,application/json" hidden>
+      </div>
+      <div id="bkConfirm" class="share" hidden></div>
+      <div class="msg" id="bkMsg" role="status"></div>
+      <h2 style="margin-top:22px">How to keep the backup in JioCloud</h2>
+      <ol style="margin:0;padding-left:20px;display:grid;gap:6px">
+        <li>Press <b>Save backup to JioCloud</b>. Your phone's share menu opens.</li>
+        <li>Choose <b>JioCloud</b> (JioAICloud) from the list. It uploads the file. If JioCloud is not listed, press <b>Download backup file</b> instead and upload that file from the JioCloud app.</li>
+        <li>To restore on a new phone: download the latest backup file from JioCloud, open this app, press <b>Restore from backup</b> and pick the file.</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="tab-settings" hidden>
+    <form class="panel" id="sForm" style="max-width:720px">
+      <h2>Society details printed on receipts</h2>
+      <div class="fields">
+        <label class="full">Society name<input id="sName"></label>
+        <label class="full">Address<input id="sAddr" placeholder="Street, area, Surat"></label>
+        <label>Registration no.<input id="sReg"></label>
+        <label>Next receipt no.<input id="sStart" type="number" min="1" class="num"></label>
+        <label>Receipt no. format
+          <select id="sFmt"><option value="plain">Number only (e.g. 151)</option><option value="prefix">Prefix / year / number (e.g. SA/2026-27/151)</option></select>
+        </label>
+        <p class="hint full" style="margin:-4px 0 0">To carry on from the paper receipt book, enter the first unused number here. If the last paper receipt was 150, enter 151. The app never goes below this number or reuses a number already issued.</p>
+        <label>Receipt prefix<input id="sPrefix" placeholder="SA"></label>
+        <label>Self rate / month (Rs.)<input id="sSelf" type="number" min="0"></label>
+        <label>Rented rate / month (Rs.)<input id="sRent" type="number" min="0"></label>
+        <label class="full">Default period start (new receipts)
+          <select id="sCycle"><option value="apr">April–September and October–March</option><option value="jan">January–June and July–December</option></select>
+        </label>
+        <p class="hint full" style="margin:8px 0 -4px;font-weight:700;color:var(--carbon)">Late payment penalty</p>
+        <label>Penalty per day late (Rs.)<input id="sPen" type="number" min="0"></label>
+        <label>Due date: days after period start<input id="sDue" type="number" min="0"></label>
+        <p class="hint full" style="margin:8px 0 -4px;font-weight:700;color:var(--carbon)">Default amounts for other charges (filled in when you tick one; you can still change it on each receipt)</p>
+        <div class="fields full" id="sExtras"></div>
+        <label>Secretary name<input id="sSec"></label>
+        <label>Treasurer name<input id="sTre"></label>
+      </div>
+      <div class="actions"><button class="btn" type="submit">Save settings</button></div>
+      <div class="msg" id="sMsg" role="status"></div>
+    </form>
+    <div class="panel" id="olPanel" style="max-width:720px;margin-top:16px">
+      <h2>Online sharing: committee &amp; members</h2>
+      <div id="olLocal">
+        <p style="margin:0 0 10px">Right now everything is saved on this phone only. Connect a free Google Firebase database so that 3 committee members can enter data, one admin can edit, and every member can view reports and post complaints from their own phone. Do this once, on the admin's phone.</p>
+        <ol class="steps">
+          <li>On a computer, open <b>console.firebase.google.com</b> and sign in with the society's or your Gmail. Tap <b>Create a project</b>, name it <b>stuti-avenue</b>, turn Google Analytics off, and create it.</li>
+          <li><b>Build → Authentication → Get started → Google</b>: turn it on, choose your email as support email, Save. Then <b>Settings → Authorized domains → Add domain</b> and add this app's address: <b id="olHost"></b></li>
+          <li><b>Build → Firestore Database → Create database</b>: choose location <b>asia-south1 (Mumbai)</b>, start in <b>production mode</b>.</li>
+          <li>Enter the admin's Gmail below and tap <b>Copy security rules</b>. In Firestore open the <b>Rules</b> tab, delete what is there, paste, and tap <b>Publish</b>.</li>
+          <li><b>Project settings (gear) → Your apps → Web &lt;/&gt;</b>: register an app named <b>Stuti Avenue</b>. Copy the whole <b>firebaseConfig</b> block it shows and paste it below.</li>
+          <li>Tap <b>Connect &amp; sign in</b>, sign in with the admin Gmail, and upload this phone's records when asked.</li>
+        </ol>
+        <div class="fields">
+          <label class="full">Admin Gmail (the only person who can edit or delete)<input id="olAdmin" type="email" placeholder="name@gmail.com"></label>
+        </div>
+        <div class="actions"><button class="btn ghost" type="button" id="olRules">Copy security rules</button></div>
+        <label style="margin-top:12px">firebaseConfig from Firebase<textarea id="olCfg" rows="7" placeholder='const firebaseConfig = {
+  apiKey: "…",
+  authDomain: "…",
+  projectId: "…",
+  …
+};'></textarea></label>
+        <div class="actions"><button class="btn" type="button" id="olConnect">Connect &amp; sign in</button></div>
+        <div class="msg" id="olMsg" role="status"></div>
+      </div>
+      <div id="olCloud" hidden>
+        <p id="olWho" style="margin:0 0 10px"></p>
+        <div class="fields">
+          <label>Data entry person 1 (Gmail)<input id="olE1" type="email"></label>
+          <label>Data entry person 2 (Gmail)<input id="olE2" type="email"></label>
+          <label>Data entry person 3 (Gmail)<input id="olE3" type="email"></label>
+          <label class="full">Extra viewers, one Gmail per line (family members, auditor)<textarea id="olX" rows="3"></textarea></label>
+        </div>
+        <p class="hint" id="olViewers"></p>
+        <div class="actions">
+          <button class="btn" type="button" id="olSave">Save access</button>
+          <button class="btn wa" type="button" id="olInvite">Send invite link to WhatsApp group</button>
+          <button class="btn ghost" type="button" id="olCopy">Copy invite link</button>
+          <button class="btn ghost" type="button" id="olRules2">Copy security rules</button>
+        </div>
+        <div class="msg" id="olMsg2" role="status"></div>
+        <details class="more"><summary>Stop using online sharing on this phone</summary>
+          <p class="hint">This phone goes back to its own offline records. Nothing online is deleted.</p>
+          <button class="btn danger small" type="button" id="olOff">Disconnect this phone</button>
+        </details>
+      </div>
+      <textarea id="olRulesTxt" rows="8" readonly hidden style="margin-top:10px;font-family:var(--mono);font-size:11px"></textarea>
+    </div>
+
+  </section>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const DEFAULT_CFG = {name:"Stuti Avenue Co-op. Housing Service Society",address:"",reg:"",prefix:"SA",selfRate:1400,rentRate:1700,cycle:"apr",secretary:"",treasurer:"",startSeq:1,fmt:"plain",penaltyRate:10,dueDays:15,extras:{}};
+let cfg = {...DEFAULT_CFG};
+let members = [];     // {id, flatNo, name, mobile, occ}
+let receipts = [];    // receipt docs
+let db = null;
+let draftMembers = null;
+
+/* ---------- helpers ---------- */
+const inr = n => Number(n||0).toLocaleString("en-IN");
+const todayISO = () => { const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,10); };
+const fmtDate = iso => { if(!iso) return ""; const [y,m,d]=iso.split("-"); return `${d}/${m}/${y}`; };
+const pad = (n,w=3) => String(n).padStart(w,"0");
+const esc = s => String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const flatSort = (a,b) => String(a.flatNo).localeCompare(String(b.flatNo),undefined,{numeric:true});
+const rateFor = occ => occ==="rented" ? Number(cfg.rentRate) : Number(cfg.selfRate);
+
+function words(num){
+  num = Math.round(num);
+  if(num===0) return "Zero";
+  const a=["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
+  const b=["","","Twenty","Thirty","Forty","Fifty","Sixty","Seventy","Eighty","Ninety"];
+  const two=n=> n<20?a[n]:b[Math.floor(n/10)]+(n%10?" "+a[n%10]:"");
+  const three=n=> (n>=100? a[Math.floor(n/100)]+" Hundred"+(n%100?" ":""):"")+(n%100?two(n%100):"");
+  let out=[]; const cr=Math.floor(num/1e7); num%=1e7; const lk=Math.floor(num/1e5); num%=1e5; const th=Math.floor(num/1e3); num%=1e3;
+  if(cr) out.push(three(cr)+" Crore"); if(lk) out.push(two(lk)+" Lakh"); if(th) out.push(two(th)+" Thousand"); if(num) out.push(three(num));
+  return out.join(" ");
+}
+
+function periods(){
+  const list=[]; const startMonths = cfg.cycle==="jan" ? [0,6] : [3,9];
+  for(let y=2024;y<=2030;y++) for(const m of startMonths){
+    const s=new Date(y,m,1), e=new Date(y,m+5,1);
+    list.push({key:`${y}-${pad(m+1,2)}`, label:`${MONTHS[s.getMonth()]} ${s.getFullYear()} – ${MONTHS[e.getMonth()]} ${e.getFullYear()}`, start:s});
+  }
+  return list;
+}
+function currentPeriodKey(){
+  const now=new Date(); let best=null;
+  for(const p of periods()) if(p.start<=now) best=p.key;
+  return best;
+}
+function fyOf(iso){ const [y,m]=iso.split("-").map(Number); const s = m>=4?y:y-1; return `${s}-${String((s+1)%100).padStart(2,"0")}`; }
+function nextSeq(){ return Math.max(receipts.reduce((m,r)=>Math.max(m,Number(r.seq)||0),0)+1, Number(cfg.startSeq)||1); }
+function receiptNoFor(seq,iso){ return cfg.fmt==="prefix" ? `${(cfg.prefix||"SA").toUpperCase()}/${fyOf(iso||todayISO())}/${pad(seq)}` : String(seq); }
+
+/* ---------- tabs ---------- */
+document.querySelectorAll("nav.tabs button").forEach(b=>b.addEventListener("click",()=>goTab(b.dataset.tab)));
+
+/* ---------- receipt form ---------- */
+const isoOf = d => `${d.getFullYear()}-${pad(d.getMonth()+1,2)}-${pad(d.getDate(),2)}`;
+function sixMonthsEnd(fromISO){ const [y,m,d]=fromISO.split("-").map(Number); return isoOf(new Date(y,m-1+6,d-1)); }
+function monthsBetween(a,b){
+  if(!a||!b) return 0;
+  const days = (new Date(b+"T00:00") - new Date(a+"T00:00"))/86400000 + 1;
+  return days>0 ? Math.max(1, Math.round(days/30.4375)) : 0;
+}
+function fillPeriodSelect(force){
+  if(force || !$("rFrom").value){
+    const p=periods().find(x=>x.key===currentPeriodKey());
+    const from = p ? isoOf(p.start) : todayISO();
+    $("rFrom").value=from; $("rTo").value=sixMonthsEnd(from);
+  }
+}
+$("rFrom").addEventListener("change",()=>{ if($("rFrom").value){ $("rTo").value=sixMonthsEnd($("rFrom").value); update(); } });
+function fillMemberSelect(){
+  const sel=$("rMember"), keep=sel.value;
+  sel.innerHTML = `<option value="">Select flat…</option>` + [...members].sort(flatSort).map(m=>`<option value="${esc(m.id)}">Flat ${esc(m.flatNo)}${m.name?" — "+esc(m.name):""}</option>`).join("");
+  sel.value = keep;
+}
+document.querySelector('nav.tabs button[data-tab="receipt"]').addEventListener("click",()=>{
+  if(draftMembers){ $("rMsg").className="msg err"; $("rMsg").textContent="The member register has unsaved changes. Go to Members and press Save changes, or this list will not update."; }
+});
+$("rMember").addEventListener("change",()=>{
+  const m = members.find(x=>x.id===$("rMember").value);
+  $("rName").value = m?.name||""; $("rMobile").value = m?.mobile||""; $("rEmail").value = m?.email||""; $("rOcc").value = m?.occ||"self";
+  update();
+});
+const method = () => document.querySelector('input[name="method"]:checked').value;
+document.querySelectorAll('input[name="method"]').forEach(r=>r.addEventListener("change",update));
+$("rSeq").addEventListener("input",()=>{ $("rSeq").dataset.touched="1"; });
+$("rForm").addEventListener("input",update);
+$("rForm").addEventListener("change",update);
+
+const EXTRAS=[
+  {k:"repair",label:"Repair fund"},
+  {k:"sinking",label:"Sinking fund"},
+  {k:"parking",label:"Parking charges"},
+  {k:"nonocc",label:"Non-occupancy charges"},
+  {k:"sharetx",label:"Share transfer fee"},
+  {k:"entry",label:"Entry fee (new member)"},
+  {k:"flattx",label:"Flat transfer fee"},
+  {k:"penalty",label:"Late payment penalty"},
+  {k:"other",label:"Other expense"},
+];
+function renderExtras(){
+  $("extras").innerHTML = EXTRAS.map(x=>`<div class="xrow">
+    <label class="xchk"><input type="checkbox" id="x-${x.k}" data-x="${x.k}"> ${x.label}</label>
+    ${x.k==="other"?`<input id="xd-other" class="xdesc" placeholder="What is it for?">`:""}
+    ${x.k==="penalty"?`<span class="xdue">Due date <input type="date" id="rDue"></span>`:""}
+    <input id="xa-${x.k}" data-xa="${x.k}" type="number" min="0" class="num xamt" placeholder="Rs.">
+  </div>`).join("");
+}
+renderExtras();
+$("extras").addEventListener("change",e=>{
+  const k=e.target.dataset.x; if(!k) return;
+  e.target.dataset.touched="1";
+  const amt=$("xa-"+k);
+  if(e.target.checked && !amt.value && k!=="penalty"){ const def=Number((cfg.extras||{})[k])||0; if(def) amt.value=def; }
+  if(!e.target.checked && k!=="penalty") amt.value="";
+});
+$("extras").addEventListener("input",e=>{
+  const k=e.target.dataset.xa;
+  if(k){ e.target.dataset.touched="1"; const c=$("x-"+k); if(Number(e.target.value)>0){ c.checked=true; c.dataset.touched="1"; } }
+  if(e.target.id==="rDue") e.target.dataset.touched="1";
+});
+
+function dueDefault(from){ if(!from) return ""; const [y,m,d]=from.split("-").map(Number); return isoOf(new Date(y,m-1,d+(Number(cfg.dueDays)||0))); }
+function penaltyInfo(date,due){
+  if(!date||!due) return {days:0,amt:0};
+  const days=Math.max(0,Math.round((new Date(date+"T00:00")-new Date(due+"T00:00"))/86400000));
+  return {days, amt:days*(Number(cfg.penaltyRate)||0)};
+}
+function itemsOf(r){ return r.items || [{k:"maint",label:`Maintenance (Rs. ${inr(r.rate)} x ${r.months||6} months)`,amount:r.amount}]; }
+function titleOf(r){ return r.inclMaint===false ? "PAYMENT RECEIPT" : "MAINTENANCE RECEIPT"; }
+
+function formData(){
+  const rate = rateFor($("rOcc").value);
+  const inc = $("rIncMaint").checked;
+  const from=$("rFrom").value, to=$("rTo").value, months=monthsBetween(from,to);
+  const m = members.find(x=>x.id===$("rMember").value);
+  const date=$("rDate").value||todayISO(), due=$("rDue").value, pi=penaltyInfo(date,due);
+  const items=[];
+  if(inc && months) items.push({k:"maint",label:`Maintenance (Rs. ${inr(rate)} x ${months} months)`,amount:rate*months});
+  for(const x of EXTRAS){
+    if(!$("x-"+x.k).checked) continue;
+    const a=Math.round(Number($("xa-"+x.k).value)||0); if(a<=0) continue;
+    let label=x.label;
+    if(x.k==="other"){ const ds=$("xd-other").value.trim(); if(ds) label="Other: "+ds; }
+    if(x.k==="penalty" && pi.days) label+=` (${pi.days} days late, due ${fmtDate(due)})`;
+    items.push({k:x.k,label,amount:a});
+  }
+  const d = {
+    date, memberId:$("rMember").value, flatNo:m?.flatNo||"", name:$("rName").value.trim(),
+    mobile:$("rMobile").value.trim(), email:$("rEmail").value.trim(), occ:$("rOcc").value, rate, months,
+    inclMaint:inc, maint:inc?rate*months:0, items, amount:items.reduce((s,i)=>s+i.amount,0),
+    dueDate:due, lateDays:pi.days,
+    from, to, periodKey:inc&&from?from.slice(0,7):"", period:inc&&from&&to?`${fmtDate(from)} to ${fmtDate(to)}`:"", method:method(), remarks:$("rRemarks").value.trim()
+  };
+  if(d.method==="Online"){ d.txn=$("rTxn").value.trim(); d.via=$("rApp").value; }
+  if(d.method==="Cheque"){ d.chqNo=$("rChqNo").value.trim(); d.chqDate=$("rChqDate").value; d.bank=$("rBank").value.trim(); d.branch=$("rBranch").value.trim(); }
+  return d;
+}
+function update(){
+  const mth=method();
+  $("onlineBox").hidden = mth!=="Online"; $("chequeBox").hidden = mth!=="Cheque";
+  const inc=$("rIncMaint").checked;
+  $("periodBox").hidden = !inc;
+  // penalty
+  if(!$("rDue").dataset.touched) $("rDue").value=dueDefault($("rFrom").value);
+  const pi=penaltyInfo($("rDate").value||todayISO(), $("rDue").value);
+  if(!$("x-penalty").dataset.touched) $("x-penalty").checked = inc && pi.days>0;
+  if(!$("xa-penalty").dataset.touched) $("xa-penalty").value = $("x-penalty").checked && pi.amt ? pi.amt : "";
+  $("penaltyHint").textContent = !$("rDue").value ? "" : pi.days>0
+    ? `Paid ${pi.days} day${pi.days===1?"":"s"} after the due date (${fmtDate($("rDue").value)}): ${pi.days} × Rs. ${inr(cfg.penaltyRate)} = Rs. ${inr(pi.amt)}.`
+    : `Paid on or before the due date (${fmtDate($("rDue").value)}), so no penalty.`;
+  const d=formData();
+  $("rRate").value = "Rs. "+inr(d.rate);
+  const extra=d.amount-d.maint;
+  $("calcLine").textContent = (inc?`Maintenance Rs. ${inr(d.maint)}`:"No maintenance")+(extra?` + other charges Rs. ${inr(extra)}`:"");
+  const ph=$("periodHint");
+  if(d.from && d.to && d.to<d.from){ ph.style.color="var(--danger)"; ph.textContent="The end date is before the start date."; }
+  else if(d.months && d.months!==6){ ph.style.color="var(--danger)"; ph.textContent=`This period is ${d.months} months, so maintenance is worked out for ${d.months} months instead of 6.`; }
+  else { ph.style.color=""; ph.textContent="Pick the start date; the end date fills in 6 months later. You can change either date."; }
+  $("amt").textContent = "Rs. "+inr(d.amount);
+  if(!$("rSeq").dataset.touched || !$("rSeq").value) $("rSeq").value = nextSeq();
+  renderPreview({...d, receiptNo:receiptNoFor(Number($("rSeq").value)||nextSeq(), d.date)});
+}
+function payLine(r){
+  if(r.method==="Cash") return "Cash";
+  if(r.method==="Online") return `Online (${r.via||"UPI"})${r.txn?" · Ref "+r.txn:""}`;
+  return `Cheque deposit${r.chqNo?" · No. "+r.chqNo:""}${r.chqDate?" dt. "+fmtDate(r.chqDate):""}${r.bank?" · "+r.bank:""}${r.branch?", "+r.branch:""}`;
+}
+function copyHTML(r,label){
+  const items=itemsOf(r);
+  return `<div class="copy"><span class="tag">${label}</span>
+    <h3>${esc(cfg.name)}</h3>
+    <div class="sub">${esc([cfg.reg?"Reg. No. "+cfg.reg:"",cfg.address].filter(Boolean).join(" · ")||"Add address in Settings")}</div>
+    <div class="title">${titleOf(r)}</div>
+    <dl class="kv">
+      <dt>Receipt no.</dt><dd class="num">${esc(r.receiptNo)} &nbsp;·&nbsp; ${fmtDate(r.date)}</dd>
+      <dt>Received from</dt><dd>${esc(r.name)||"—"}</dd>
+      <dt>Flat no.</dt><dd>${esc(r.flatNo)||"—"} (${r.occ==="rented"?"Rented":"Self"})${r.mobile?" · "+esc(r.mobile):""}</dd>
+      ${r.inclMaint!==false?`<dt>Period</dt><dd>${esc(r.period)||"—"} (${r.months||6} months)</dd>`:""}
+      <dt>Paid by</dt><dd>${esc(payLine(r))}</dd>
+      ${r.remarks?`<dt>Remarks</dt><dd>${esc(r.remarks)}</dd>`:""}
+    </dl>
+    <table class="parts"><thead><tr><th>Particulars</th><th>Rs.</th></tr></thead><tbody>
+      ${items.length?items.map(i=>`<tr><td>${esc(i.label)}</td><td class="num">${inr(i.amount)}</td></tr>`).join(""):`<tr><td colspan="2" style="color:var(--muted)">Tick maintenance or a charge to add it</td></tr>`}
+    </tbody><tfoot><tr><td>Total</td><td class="num">${inr(r.amount)}</td></tr></tfoot></table>
+    <div class="words">Rupees ${words(r.amount)} Only</div>
+    <div class="sign"><div>Member</div><div>Treasurer</div><div>Secretary</div></div></div>`;
+}
+function renderPreview(r){ $("preview").innerHTML = copyHTML(r,"Member copy")+copyHTML(r,"Society copy"); }
+
+function resetForm(){
+  $("rForm").reset(); delete $("rSeq").dataset.touched;
+  document.querySelectorAll("#extras [data-touched]").forEach(el=>delete el.dataset.touched);
+  $("rDate").value=todayISO(); fillPeriodSelect(true); update();
+}
+$("resetBtn").addEventListener("click",()=>{ resetForm(); $("rMsg").textContent=""; $("shareBar").hidden=true; });
+
+$("rForm").addEventListener("submit", async e=>{
+  e.preventDefault();
+  const msg=$("rMsg"); msg.className="msg";
+  const d=formData();
+  if(!d.memberId){ msg.className="msg err"; msg.textContent="Select a flat first."; return; }
+  if(!d.name){ msg.className="msg err"; msg.textContent="Enter the member's name."; return; }
+  if(d.inclMaint && (!d.from || !d.to || d.to<d.from)){ msg.className="msg err"; msg.textContent="Choose a valid maintenance period (from and to dates)."; return; }
+  if(!d.items.length){ msg.className="msg err"; msg.textContent="Nothing to charge. Tick maintenance or at least one charge with an amount."; return; }
+  if($("x-other").checked && Number($("xa-other").value)>0 && !$("xd-other").value.trim()){ msg.className="msg err"; msg.textContent="Describe what the other expense is for."; return; }
+  if(d.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)){ msg.className="msg err"; msg.textContent="The email address looks incomplete."; return; }
+  if(d.mobile && !/^\d{10}$/.test(d.mobile)){ msg.className="msg err"; msg.textContent="Mobile number must be 10 digits."; return; }
+  if(d.method==="Cheque" && (!d.chqNo || !d.bank)){ msg.className="msg err"; msg.textContent="For cheque deposit, enter at least the cheque number and bank name."; return; }
+  const dup = d.inclMaint && receipts.find(r=>r.memberId===d.memberId && r.inclMaint!==false && r.periodKey===d.periodKey);
+  if(dup && !$("saveBtn").dataset.confirm){
+    $("saveBtn").dataset.confirm="1"; $("saveBtn").textContent="Save anyway";
+    msg.className="msg err"; msg.textContent=`Flat ${d.flatNo} already has receipt ${dup.receiptNo} with maintenance for this period. Press "Save anyway" to issue another.`;
+    return;
+  }
+  delete $("saveBtn").dataset.confirm; $("saveBtn").textContent="Save & download PDF";
+  const seq=Math.floor(Number($("rSeq").value));
+  if(!seq || seq<1){ msg.className="msg err"; msg.textContent="Enter a receipt number of 1 or more."; return; }
+  const taken=receipts.find(r=>Number(r.seq)===seq);
+  if(taken){ msg.className="msg err"; msg.textContent=`Receipt no. ${seq} is already used (Flat ${taken.flatNo}, ${fmtDate(taken.date)}). Next free number is ${nextSeq()}.`; return; }
+  const rec={...d, id:"r"+pad(seq,5), seq, receiptNo:receiptNoFor(seq,d.date), createdAt:new Date().toISOString(), by:CLOUD.on?CLOUD.email:""};
+  $("saveBtn").disabled=true;
+  try{
+    receipts.push(rec); persist(); renderHistory();
+    const m=members.find(x=>x.id===d.memberId);
+    if(m && ROLE==="admin" && (m.name!==d.name || m.mobile!==d.mobile || (m.email||"")!==d.email || m.occ!==d.occ)){
+      Object.assign(m,{name:d.name,mobile:d.mobile,email:d.email,occ:d.occ}); persist(); fillMemberSelect(); if(!draftMembers) renderMembers();
+    }
+    msg.className="msg ok"; msg.textContent=`Saved ${rec.receiptNo}.`;
+    await downloadPDF(rec, msg);
+    resetForm(); showShare(rec);
+  }catch(err){ msg.className="msg err"; msg.textContent="Could not save the receipt: "+(err.message||err.code); }
+  finally{ $("saveBtn").disabled=false; }
+});
+
+/* ---------- share ---------- */
+function shareText(r){
+  const lines=[`*${cfg.name}*`, `${r.inclMaint===false?"Payment":"Maintenance"} Receipt No. ${r.receiptNo}`, `Date: ${fmtDate(r.date)}`,
+    `Flat: ${r.flatNo} (${r.occ==="rented"?"Rented":"Self"})`, `Name: ${r.name}`];
+  if(r.inclMaint!==false) lines.push(`Period: ${r.period} (${r.months||6} months)`);
+  lines.push("", ...itemsOf(r).map(i=>`${i.label}: Rs. ${inr(i.amount)}`));
+  lines.push(`*Total: Rs. ${inr(r.amount)}/-* (Rupees ${words(r.amount)} Only)`, `Paid by: ${payLine(r).replace(/·/g,"|")}`, ``, `Received with thanks.`);
+  return lines.join("\n");
+}
+function shareLinks(r, small){
+  const t=shareText(r), cls=small?" small":"";
+  const num=(r.mobile||"").replace(/\D/g,""); const wa = num.length===10 ? "91"+num : num;
+  const waHref=`https://wa.me/${wa}?text=${encodeURIComponent(t)}`;
+  const sub=`${r.inclMaint===false?"Payment":"Maintenance"} Receipt ${r.receiptNo} - Flat ${r.flatNo}`;
+  const gm=`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(r.email||"")}&su=${encodeURIComponent(sub)}&body=${encodeURIComponent(t.replace(/\*/g,""))}`;
+  const mt=`mailto:${encodeURIComponent(r.email||"")}?subject=${encodeURIComponent(sub)}&body=${encodeURIComponent(t.replace(/\*/g,""))}`;
+  return `<button class="btn${cls}" type="button" data-share="${esc(r.receiptNo)}">Share PDF</button>
+    <a class="btn wa${cls}" href="${waHref}" target="_blank" rel="noopener">WhatsApp</a>
+    <a class="btn ghost${cls}" href="${gm}" target="_blank" rel="noopener">Gmail</a>
+    <a class="btn ghost${cls}" href="${mt}">Email app</a>`;
+}
+function showShare(r){
+  const b=$("shareBar"); b.hidden=false;
+  b.innerHTML = `<p>Send receipt ${esc(r.receiptNo)} to ${esc(r.name)}${r.mobile?"":" (no mobile saved; WhatsApp will ask you to pick a contact)"}${r.email?"":" (no email saved)"}. <b>Share PDF</b> sends the receipt PDF itself — pick WhatsApp, Gmail or any app. The other buttons send the details as text.</p><div class="links">${shareLinks(r)}</div>${(()=>{ const p=r.inclMaint!==false&&typeof statusForReceipt==="function"?statusForReceipt(r):null; return p?`<p style="margin-top:10px">Update the society group with who has paid for ${periodFull(p)}:</p><div class="links"><a class="btn wa" href="https://wa.me/?text=${encodeURIComponent(statusMessage(p,true))}" target="_blank" rel="noopener">Send paid / pending list to group</a></div>`:""; })()}`;
+}
+
+/* ---------- PDF ---------- */
+function buildPDF(r){
+  const { jsPDF } = window.jspdf;
+  const doc=new jsPDF({unit:"mm",format:"a4"});
+  const W=210, H=297, half=H/2, M=14, items=itemsOf(r);
+  const drawCopy=(top,label)=>{
+    let y=top+13;
+    doc.setDrawColor(35,64,168); doc.setLineWidth(0.4);
+    doc.roundedRect(M-4, top+5, W-2*(M-4), half-10, 2, 2);
+    doc.setFont("helvetica","bold"); doc.setFontSize(7); doc.setTextColor(35,64,168);
+    const lw=doc.getTextWidth(label.toUpperCase())+5;
+    doc.roundedRect(W-M-lw, y-4, lw, 5.5, 1,1); doc.text(label.toUpperCase(), W-M-lw+2.5, y);
+    doc.setTextColor(24,33,58); doc.setFontSize(14);
+    doc.text(cfg.name, W/2, y+1, {align:"center", maxWidth:W-2*M-50});
+    y+=6; doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(93,104,134);
+    const sub=[cfg.reg?"Reg. No. "+cfg.reg:"",cfg.address].filter(Boolean).join("  |  ");
+    if(sub) doc.text(sub, W/2, y, {align:"center", maxWidth:W-2*M});
+    y+=3.5; doc.setDrawColor(213,219,231); doc.setLineWidth(0.3); doc.line(M, y, W-M, y);
+    y+=5; doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(35,64,168);
+    doc.text(titleOf(r), W/2, y, {align:"center"});
+    y+=6.5; doc.setFontSize(9.5); doc.setTextColor(24,33,58);
+    doc.setFont("helvetica","normal"); doc.text("Receipt No.:",M,y); doc.setFont("helvetica","bold"); doc.text(r.receiptNo,M+22,y);
+    doc.setFont("helvetica","normal"); doc.text("Date:",W-M-35,y); doc.setFont("helvetica","bold"); doc.text(fmtDate(r.date),W-M,y,{align:"right"});
+    const info=[["Received from", r.name],["Flat No.", `${r.flatNo}  (${r.occ==="rented"?"Rented":"Self"})${r.mobile?"      Mobile: "+r.mobile:""}`]];
+    if(r.inclMaint!==false) info.push(["Period", `${r.period}  (${r.months||6} months)`]);
+    info.push(["Payment mode", payLine(r).replace(/·/g,"|")]);
+    if(r.remarks) info.push(["Remarks", r.remarks]);
+    y+=5.5; doc.setFontSize(9);
+    for(const [k,v] of info){
+      doc.setFont("helvetica","normal"); doc.setTextColor(93,104,134); doc.text(k, M, y);
+      doc.setFont("helvetica","bold"); doc.setTextColor(24,33,58);
+      const lines=doc.splitTextToSize(String(v), W-2*M-30); doc.text(lines, M+30, y);
+      y+=4.8*lines.length;
+    }
+    // particulars table
+    const sy=top+half-12, tableTop=y-1.5, headH=5.5, totH=6;
+    let rowH=(sy-14-tableTop-headH-totH-5)/Math.max(1,items.length);
+    rowH=Math.max(3.6,Math.min(5.2,rowH));
+    const xAmt=W-M-3;
+    doc.setFillColor(227,233,251); doc.rect(M,tableTop,W-2*M,headH,"F");
+    doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(35,64,168);
+    doc.text("PARTICULARS",M+2,tableTop+3.8); doc.text("AMOUNT (Rs.)",xAmt,tableTop+3.8,{align:"right"});
+    let ty=tableTop+headH;
+    doc.setFont("helvetica","normal"); doc.setTextColor(24,33,58); doc.setFontSize(rowH<4.5?8:9); doc.setLineWidth(0.2);
+    for(const it of items){
+      doc.text(String(it.label), M+2, ty+rowH-1.3, {maxWidth:W-2*M-40});
+      doc.text(inr(it.amount), xAmt, ty+rowH-1.3, {align:"right"});
+      ty+=rowH; doc.setDrawColor(225,229,238); doc.line(M,ty,W-M,ty);
+    }
+    doc.setDrawColor(24,33,58); doc.setLineWidth(0.35); doc.line(M,ty,W-M,ty);
+    doc.setFont("helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(31,122,77);
+    doc.text("TOTAL",M+2,ty+4.4); doc.text(`Rs. ${inr(r.amount)}/-`, xAmt, ty+4.4, {align:"right"});
+    ty+=totH+3.5;
+    doc.setFont("helvetica","italic"); doc.setFontSize(9); doc.setTextColor(24,33,58);
+    doc.text(`Rupees ${words(r.amount)} Only`, M, ty, {maxWidth:W-2*M});
+    // signatures
+    doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(93,104,134); doc.setDrawColor(150,160,185); doc.setLineWidth(0.3);
+    doc.text("Received with thanks, subject to realisation of cheque.", M, sy-8);
+    const cols=[["Member",""],["Treasurer",cfg.treasurer],["Secretary",cfg.secretary]];
+    const cw=(W-2*M-16)/3;
+    cols.forEach(([t,n],i)=>{ const x=M+i*(cw+8); doc.line(x,sy,x+cw,sy); doc.text(n?`${t} (${n})`:t, x+cw/2, sy+3.8,{align:"center"}); });
+  };
+  drawCopy(0,"Member copy");
+  drawCopy(half,"Society copy");
+  doc.setLineDashPattern([2,2],0); doc.setDrawColor(150,160,185); doc.setLineWidth(0.3);
+  doc.line(6, half, W-6, half); doc.setLineDashPattern([],0);
+  doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(150,160,185); doc.text("cut here", W/2, half-1, {align:"center"});
+  return doc;
+}
+function pdfFile(r){
+  const blob = buildPDF(r).output("blob");
+  const fname = `Receipt ${r.receiptNo.replace(/\//g,"-")} Flat ${r.flatNo}.pdf`;
+  return {blob, fname};
+}
+function saveBlob(blob, fname){
+  const url=URL.createObjectURL(blob); const a=document.createElement("a");
+  a.href=url; a.download=fname; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 60000);
+}
+async function downloadPDF(r, msgEl){
+  if(!window.jspdf){ msgEl.className="msg err"; msgEl.textContent="The PDF maker could not load. Connect to the internet once and reload the app."; return; }
+  const {blob,fname}=pdfFile(r); saveBlob(blob,fname);
+  msgEl.className="msg ok"; msgEl.textContent=`${r.receiptNo} saved. PDF downloaded — print it on A4 and cut along the dashed line.`;
+}
+async function sharePDF(r, msgEl){
+  if(!window.jspdf){ msgEl.className="msg err"; msgEl.textContent="The PDF maker could not load. Connect to the internet once and reload the app."; return; }
+  const {blob,fname}=pdfFile(r);
+  const file=new File([blob], fname, {type:"application/pdf"});
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file], title:fname, text:shareText(r).replace(/\*/g,"")}); }
+    catch(err){ if(err.name!=="AbortError"){ msgEl.className="msg err"; msgEl.textContent="Could not share: "+err.message; } }
+  } else { saveBlob(blob,fname); msgEl.className="msg"; msgEl.textContent="This browser can't share files directly, so the PDF was downloaded instead. Attach it in WhatsApp or email."; }
+}
+document.addEventListener("click", async e=>{
+  const no=e.target.closest("[data-share]")?.dataset.share; if(!no) return;
+  const r=receipts.find(x=>x.receiptNo===no); if(!r) return;
+  const msgEl = e.target.closest("#tab-history") ? $("hMsg") : $("rMsg");
+  await sharePDF(r, msgEl);
+});
+
+/* ---------- members ---------- */
+function renderMembers(){
+  const list = draftMembers || members;
+  const sorted=[...list].sort(flatSort);
+  $("memBody").innerHTML = sorted.length ? sorted.map(m=>`<tr data-id="${esc(m.id)}">
+    <td class="flat"><input id="f-${esc(m.id)}" data-k="flatNo" value="${esc(m.flatNo)}"></td>
+    <td><input id="n-${esc(m.id)}" data-k="name" value="${esc(m.name)}" placeholder="Member name"></td>
+    <td><input id="p-${esc(m.id)}" data-k="mobile" value="${esc(m.mobile)}" inputmode="numeric" maxlength="10" placeholder="10-digit mobile"></td>
+    <td><input id="e-${esc(m.id)}" data-k="email" type="email" value="${esc(m.email)}" placeholder="name@example.com" style="min-width:190px"></td>
+    <td><select id="o-${esc(m.id)}" data-k="occ"><option value="self"${m.occ!=="rented"?" selected":""}>Self</option><option value="rented"${m.occ==="rented"?" selected":""}>Rented</option></select></td>
+    <td class="num">Rs. ${inr(rateFor(m.occ))}</td>
+    <td><button class="btn danger small" type="button" data-del="${esc(m.id)}">Remove</button></td></tr>`).join("")
+    : `<tr><td colspan="7" class="empty">No flats yet. Press "Add flat" to start the register.</td></tr>`;
+  const selfN=list.filter(m=>m.occ!=="rented").length, rentN=list.length-selfN;
+  $("memStats").innerHTML = `<span>Flats <b>${list.length}</b></span><span>Self <b>${selfN}</b></span><span>Rented <b>${rentN}</b></span><span>Due per 6 months <b>Rs. ${inr(list.reduce((s,m)=>s+rateFor(m.occ)*6,0))}</b></span>`;
+}
+function ensureDraft(){ if(!draftMembers) draftMembers = members.map(m=>({...m})); }
+$("memBody").addEventListener("input",e=>{
+  const tr=e.target.closest("tr"); if(!tr||!e.target.dataset.k) return;
+  ensureDraft(); const m=draftMembers.find(x=>x.id===tr.dataset.id); m[e.target.dataset.k]=e.target.value;
+  if(e.target.dataset.k==="occ"){ tr.children[4].textContent="Rs. "+inr(rateFor(m.occ)); }
+  $("mMsg").className="msg"; $("mMsg").textContent="Unsaved changes.";
+});
+$("memBody").addEventListener("change",e=>{ if(e.target.dataset.k==="occ") renderMembers(); });
+$("memBody").addEventListener("click",e=>{
+  const id=e.target.dataset.del; if(!id) return;
+  ensureDraft(); draftMembers=draftMembers.filter(m=>m.id!==id); renderMembers();
+  $("mMsg").className="msg err"; $("mMsg").textContent="Row removed. Press Save changes to make it permanent.";
+});
+$("addFlat").addEventListener("click",()=>{
+  ensureDraft(); const id="f"+Date.now().toString(36);
+  draftMembers.push({id,flatNo:"",name:"",mobile:"",email:"",occ:"self"}); renderMembers();
+  document.getElementById("f-"+id)?.focus();
+});
+$("saveMembers").addEventListener("click", async ()=>{
+  const msg=$("mMsg"); msg.className="msg";
+  if(!draftMembers){ msg.textContent="Nothing to save."; return; }
+  const bad=draftMembers.find(m=>m.mobile && !/^\d{10}$/.test(m.mobile));
+  if(bad){ msg.className="msg err"; msg.textContent=`Flat ${bad.flatNo||"(blank)"}: mobile number must be 10 digits.`; return; }
+  const badE=draftMembers.find(m=>m.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m.email.trim()));
+  if(badE){ msg.className="msg err"; msg.textContent=`Flat ${badE.flatNo||"(blank)"}: email address looks incomplete.`; return; }
+  const noFlat=draftMembers.find(m=>!String(m.flatNo).trim());
+  if(noFlat){ msg.className="msg err"; msg.textContent="Every row needs a flat number."; return; }
+  const seen=new Set(); const dupF=draftMembers.find(m=>{const k=String(m.flatNo).trim().toLowerCase(); if(seen.has(k)) return true; seen.add(k);});
+  if(dupF){ msg.className="msg err"; msg.textContent=`Flat ${dupF.flatNo} appears twice.`; return; }
+  $("saveMembers").disabled=true;
+  try{
+    if(db){
+      const col=db.collection("members");
+      const before=[...members], draft=[...draftMembers];
+      for(const old of before) if(!draft.find(m=>m.id===old.id)) await col.doc(old.id).delete();
+      for(const m of draft){
+        const old=before.find(x=>x.id===m.id);
+        const body={flatNo:String(m.flatNo).trim(),name:(m.name||"").trim(),mobile:(m.mobile||"").trim(),email:(m.email||"").trim(),occ:m.occ};
+        if(!old || old.flatNo!==body.flatNo || old.name!==body.name || old.mobile!==body.mobile || (old.email||"")!==body.email || old.occ!==body.occ) await col.doc(m.id).set(body);
+      }
+    } else { members = draftMembers.map(m=>({...m,flatNo:String(m.flatNo).trim(),name:(m.name||"").trim(),mobile:(m.mobile||"").trim(),email:(m.email||"").trim()})); persist(); }
+    draftMembers=null; renderMembers(); fillMemberSelect();
+    msg.className="msg ok"; msg.textContent="Member register saved.";
+  }catch(err){ msg.className="msg err"; msg.textContent="Could not save: "+(err.message||err.code); }
+  finally{ $("saveMembers").disabled=false; }
+});
+
+/* ---------- history ---------- */
+function renderHistory(){
+  const q=$("hSearch").value.trim().toLowerCase();
+  const list=[...receipts].sort((a,b)=>(b.seq||0)-(a.seq||0)).filter(r=>!q || [r.receiptNo,r.name,r.flatNo,r.period,r.method].join(" ").toLowerCase().includes(q));
+  $("hBody").innerHTML = list.length ? list.map(r=>`<tr>
+    <td class="num">${esc(r.receiptNo)}</td><td class="num">${fmtDate(r.date)}</td><td>${esc(r.flatNo)}</td>
+    <td>${esc(r.name)} <span class="pill ${r.occ==="rented"?"rented":"self"}">${r.occ==="rented"?"Rented":"Self"}</span></td>
+    <td>${r.inclMaint===false?`<span style="color:var(--muted)">${esc(itemsOf(r).map(i=>i.label).join(", "))}</span>`:esc(r.period)+(itemsOf(r).length>1?`<br><span style="color:var(--muted);font-size:12px">+ ${esc(itemsOf(r).filter(i=>i.k!=="maint").map(i=>i.label.replace(/ \(.*$/,"")).join(", "))}</span>`:"")}</td><td>${esc(r.method)}${r.method==="Cheque"&&r.chqNo?" #"+esc(r.chqNo):""}</td>
+    <td class="num" style="text-align:right">Rs. ${inr(r.amount)}</td>
+    <td style="white-space:nowrap"><button class="btn ghost small" data-pdf="${esc(r.receiptNo)}" type="button">PDF</button>
+      ${shareLinks(r,true)}
+      <button class="btn danger small" data-rdel="${esc(r.receiptNo)}" type="button">Delete</button></td></tr>`).join("")
+    : `<tr><td colspan="8" class="empty">${receipts.length?"No receipts match your search.":"No receipts issued yet. Saved receipts appear here."}</td></tr>`;
+  const pk=currentPeriodKey(); const cur=receipts.filter(r=>r.periodKey===pk && r.inclMaint!==false);
+  const label=periods().find(p=>p.key===pk)?.label||"";
+  const paidFlats=new Set(cur.map(r=>r.memberId));
+  $("hStats").innerHTML = `<span>Current period <b>${esc(label)}</b></span><span>Collected <b>Rs. ${inr(cur.reduce((s,r)=>s+Number(r.amount||0),0))}</b></span><span>Flats paid <b>${paidFlats.size}/${members.length}</b></span>`;
+}
+$("hSearch").addEventListener("input",renderHistory);
+$("hBody").addEventListener("click", async e=>{
+  const msg=$("hMsg");
+  if(e.target.dataset.pdf){ const r=receipts.find(x=>x.receiptNo===e.target.dataset.pdf); msg.className="msg"; msg.textContent=""; if(r) await downloadPDF(r,msg); }
+  const del=e.target.dataset.rdel;
+  if(del){
+    if(!e.target.dataset.armed){ e.target.dataset.armed="1"; e.target.textContent="Confirm delete"; return; }
+    const r=receipts.find(x=>x.receiptNo===del);
+    try{ if(db) await db.collection("receipts").doc(r._id).delete(); else { receipts=receipts.filter(x=>x!==r); persist(); renderHistory(); update(); }
+      msg.className="msg ok"; msg.textContent=`Deleted ${del}.`; }
+    catch(err){ msg.className="msg err"; msg.textContent="Could not delete: "+(err.message||err.code); }
+  }
+});
+
+/* ---------- settings ---------- */
+function fillSettings(){
+  $("sName").value=cfg.name; $("sAddr").value=cfg.address; $("sReg").value=cfg.reg; $("sPrefix").value=cfg.prefix;
+  $("sSelf").value=cfg.selfRate; $("sRent").value=cfg.rentRate; $("sCycle").value=cfg.cycle; $("sSec").value=cfg.secretary; $("sTre").value=cfg.treasurer;
+  $("sStart").value=cfg.startSeq||1; $("sFmt").value=cfg.fmt||"plain";
+  $("sPen").value=cfg.penaltyRate??10; $("sDue").value=cfg.dueDays??15;
+  $("sExtras").innerHTML=EXTRAS.filter(x=>x.k!=="penalty").map(x=>`<label>${x.label} (Rs.)<input id="sx-${x.k}" type="number" min="0" value="${Number((cfg.extras||{})[x.k])||""}"></label>`).join("");
+  $("socName").textContent=cfg.name;
+}
+$("sForm").addEventListener("submit", async e=>{
+  e.preventDefault();
+  const next={name:$("sName").value.trim()||DEFAULT_CFG.name,address:$("sAddr").value.trim(),reg:$("sReg").value.trim(),prefix:$("sPrefix").value.trim()||"SA",
+    selfRate:Number($("sSelf").value)||0,rentRate:Number($("sRent").value)||0,cycle:$("sCycle").value,secretary:$("sSec").value.trim(),treasurer:$("sTre").value.trim(),
+    startSeq:Math.max(1,Math.floor(Number($("sStart").value))||1), fmt:$("sFmt").value,
+    penaltyRate:Math.max(0,Number($("sPen").value)||0), dueDays:Math.max(0,Math.floor(Number($("sDue").value))||0),
+    extras:Object.fromEntries(EXTRAS.filter(x=>x.k!=="penalty").map(x=>[x.k,Math.max(0,Number($("sx-"+x.k).value)||0)]))};
+  try{ if(db) await db.doc("config/society").set(next); else { cfg=next; persist(); applyCfg(); }
+    $("sMsg").className="msg ok"; $("sMsg").textContent="Settings saved."; }
+  catch(err){ $("sMsg").className="msg err"; $("sMsg").textContent="Could not save: "+(err.message||err.code); }
+});
+/* ---------- ledger PDF ---------- */
+function fyRange(iso){ const [y,m]=(iso||todayISO()).split("-").map(Number); const s=m>=4?y:y-1; return [`${s}-04-01`,`${s+1}-03-31`]; }
+function shortItem(l){ return String(l).replace(/ \(.*$/,"").replace(/^Maintenance.*/,"Maintenance"); }
+function shortPay(r){ if(r.method==="Cheque") return `Cheque${r.chqNo?" "+r.chqNo:""}${r.bank?" "+r.bank:""}`; if(r.method==="Online") return `Online${r.txn?" "+r.txn:""}`; return r.method||""; }
+function splitItems(r){
+  let maint=0,pen=0,oth=0;
+  for(const i of itemsOf(r)){ if(i.k==="maint") maint+=i.amount; else if(i.k==="penalty") pen+=i.amount; else oth+=i.amount; }
+  return {maint,pen,oth};
+}
+function buildLedger(from,to){
+  const { jsPDF } = window.jspdf;
+  const doc=new jsPDF({unit:"mm",format:"a4",orientation:"landscape"});
+  const W=297,H=210,M=12, TW=W-2*M;
+  const inRange=r=>(!from||r.date>=from)&&(!to||r.date<=to);
+  const list=receipts.filter(inRange).sort((a,b)=>(a.date||"").localeCompare(b.date||"")||((a.seq||0)-(b.seq||0)));
+  const pk=currentPeriodKey(), plabel=periods().find(p=>p.key===pk)?.label||"";
+  const rangeText=`${from?fmtDate(from):"start"} to ${to?fmtDate(to):"today"}`;
+  const pageHead=(title)=>{
+    doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(24,33,58);
+    doc.text(cfg.name, M, 14);
+    doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(93,104,134);
+    doc.text([cfg.reg?"Reg. No. "+cfg.reg:"",cfg.address].filter(Boolean).join("  |  "), M, 19, {maxWidth:TW-80});
+    doc.setFont("helvetica","bold"); doc.setFontSize(11); doc.setTextColor(35,64,168);
+    doc.text(title, W-M, 14, {align:"right"});
+    doc.setFont("helvetica","normal"); doc.setFontSize(8.5); doc.setTextColor(93,104,134);
+    doc.text(`Receipts dated ${rangeText}`, W-M, 19, {align:"right"});
+    doc.setDrawColor(213,219,231); doc.setLineWidth(0.3); doc.line(M,22,W-M,22);
+    return 28;
+  };
+  const table=(y,title,cols,rows)=>{
+    const rowH=6.2;
+    const head=()=>{
+      doc.setFillColor(227,233,251); doc.rect(M,y,TW,7,"F");
+      doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(35,64,168);
+      let x=M; for(const c of cols){ const tx=c.align==="right"?x+c.w-1.5:x+1.5; doc.text(c.h.toUpperCase(), tx, y+4.7, {align:c.align==="right"?"right":"left"}); x+=c.w; }
+      y+=7;
+    };
+    head();
+    for(const row of rows){
+      if(y+rowH>H-14){ doc.addPage(); y=pageHead(title+" (continued)"); head(); }
+      if(row.section){
+        doc.setFillColor(238,241,246); doc.rect(M,y,TW,rowH,"F");
+        doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(24,33,58);
+        doc.text(row.section, M+1.5, y+4.3); y+=rowH; continue;
+      }
+      if(row.fill){ doc.setFillColor(...row.fill); doc.rect(M,y,TW,rowH,"F"); }
+      doc.setFont("helvetica",row.bold?"bold":"normal"); doc.setFontSize(8.5);
+      let x=M;
+      cols.forEach((c,i)=>{
+        const v=row.cells[i]??"";
+        const col=row.colors?.[i]; if(col) doc.setTextColor(...col); else doc.setTextColor(24,33,58);
+        const t=doc.splitTextToSize(String(v), c.w-3)[0]||"";
+        doc.text(t, c.align==="right"?x+c.w-1.5:x+1.5, y+4.3, {align:c.align==="right"?"right":"left"});
+        x+=c.w;
+      });
+      doc.setDrawColor(230,233,240); doc.setLineWidth(0.15); doc.line(M,y+rowH,W-M,y+rowH);
+      y+=rowH;
+    }
+    return y;
+  };
+  const money=n=>n?inr(n):"-";
+
+  // ---- Page 1: member summary ----
+  let y=pageHead("MEMBER LEDGER - SUMMARY");
+  const sorted=[...members].sort(flatSort);
+  const byMember={}; for(const r of list){ (byMember[r.memberId] ||= []).push(r); }
+  const tot={n:0,maint:0,oth:0,pen:0,all:0}; let paidCount=0;
+  const sumRows=sorted.map(m=>{
+    const rs=byMember[m.id]||[]; const s={maint:0,pen:0,oth:0,all:0};
+    rs.forEach(r=>{ const p=splitItems(r); s.maint+=p.maint; s.pen+=p.pen; s.oth+=p.oth; s.all+=Number(r.amount)||0; });
+    const last=rs[rs.length-1];
+    const curPaid=receipts.some(r=>r.memberId===m.id && r.periodKey===pk && r.inclMaint!==false);
+    if(curPaid) paidCount++;
+    tot.n+=rs.length; tot.maint+=s.maint; tot.oth+=s.oth; tot.pen+=s.pen; tot.all+=s.all;
+    return {cells:[m.flatNo, m.name||"-", m.occ==="rented"?"Rented":"Self", m.mobile||"-", rs.length||"-", money(s.maint), money(s.oth), money(s.pen), money(s.all),
+      last?`${last.receiptNo} / ${fmtDate(last.date)}`:"-", curPaid?"Paid":"Due"],
+      colors:{10:curPaid?[31,122,77]:[179,38,30]}};
+  });
+  sumRows.push({bold:true, fill:[223,242,232], cells:["TOTAL","","","",tot.n,inr(tot.maint),inr(tot.oth),inr(tot.pen),inr(tot.all),"",`${paidCount}/${sorted.length}`]});
+  const sumCols=[{h:"Flat",w:18},{h:"Member",w:52},{h:"Type",w:15},{h:"Mobile",w:23},{h:"Rcpts",w:13,align:"right"},
+    {h:"Maintenance",w:25,align:"right"},{h:"Other chgs",w:24,align:"right"},{h:"Penalty",w:20,align:"right"},{h:"Total paid",w:26,align:"right"},
+    {h:"Last receipt",w:33},{h:"Current period",w:24}];
+  y=table(y,"MEMBER LEDGER - SUMMARY",sumCols,sumRows);
+  doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(93,104,134);
+  if(y+10<H-14) doc.text(`"Current period" shows whether maintenance for ${plabel} has been received (any receipt date). Amounts in Rs.`, M, y+6);
+
+  // ---- Flat-wise detail ----
+  doc.addPage(); y=pageHead("FLAT-WISE LEDGER");
+  const detCols=[{h:"Date",w:22},{h:"Receipt",w:24},{h:"Period",w:44},{h:"Particulars",w:104},{h:"Mode",w:52},{h:"Amount",w:27,align:"right"}];
+  const detRows=[];
+  const groups=sorted.map(m=>({title:`Flat ${m.flatNo}  -  ${m.name||"(no name)"}  (${m.occ==="rented"?"Rented":"Self"})${m.mobile?"   Mobile "+m.mobile:""}`, rs:byMember[m.id]||[]}));
+  const known=new Set(members.map(m=>m.id));
+  const orphans={}; list.filter(r=>!known.has(r.memberId)).forEach(r=>{ (orphans[r.flatNo||"?"] ||= []).push(r); });
+  Object.keys(orphans).forEach(f=>groups.push({title:`Flat ${f}  -  ${orphans[f][0].name||""}  (no longer in member register)`, rs:orphans[f]}));
+  for(const g of groups){
+    detRows.push({section:g.title});
+    if(!g.rs.length){ detRows.push({cells:["","","","No payments in this date range","",""],colors:{3:[150,160,185]}}); continue; }
+    let sub=0;
+    for(const r of g.rs){
+      sub+=Number(r.amount)||0;
+      detRows.push({cells:[fmtDate(r.date), r.receiptNo, r.inclMaint===false?"-":(r.period||"-"),
+        itemsOf(r).map(i=>`${shortItem(i.label)} ${inr(i.amount)}`).join(", "), shortPay(r), inr(r.amount)]});
+    }
+    detRows.push({bold:true, cells:["","","","Total for flat","",inr(sub)]});
+  }
+  detRows.push({bold:true, fill:[223,242,232], cells:["","","","GRAND TOTAL","",`Rs. ${inr(tot.all + Object.values(orphans).flat().reduce((s,r)=>s+(Number(r.amount)||0),0))}`]});
+  table(y,"FLAT-WISE LEDGER",detCols,detRows);
+
+  // footer
+  const n=doc.getNumberOfPages(), gen=new Date().toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"});
+  for(let i=1;i<=n;i++){ doc.setPage(i); doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(150,160,185);
+    doc.text(`Generated ${gen}`, M, H-7); doc.text(`Page ${i} of ${n}`, W-M, H-7, {align:"right"}); }
+  return doc;
+}
+async function offerFile(blob,fname,msgEl,okText){ saveBlob(blob,fname); msgEl.className="msg ok"; msgEl.textContent=okText; }
+async function shareFile(blob,fname,msgEl,type){
+  const file=new File([blob],fname,{type});
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file],title:fname}); }catch(err){ if(err.name!=="AbortError"){ msgEl.className="msg err"; msgEl.textContent="Could not share: "+err.message; } }
+  } else { saveBlob(blob,fname); msgEl.className="msg"; msgEl.textContent="This browser can't share files directly, so the PDF was downloaded instead."; }
+}
+document.addEventListener("click", async e=>{
+  if(e.target.id!=="lgShare") return;
+  const msg=$("hMsg"); msg.className="msg";
+  if(!window.jspdf){ msg.className="msg err"; msg.textContent="The PDF maker could not load. Connect to the internet once and reload the app."; return; }
+  try{ const {blob,fname}=ledgerFile(); await shareFile(blob,fname,msg,"application/pdf"); }catch(err){ msg.className="msg err"; msg.textContent=err.message; }
+});
+function ledgerFile(){
+  const from=$("lgFrom").value, to=$("lgTo").value;
+  if(from && to && to<from) throw new Error("The 'To' date is before the 'From' date.");
+  const blob=buildLedger(from,to).output("blob");
+  return {blob, fname:`Stuti Avenue ledger ${from||"start"} to ${to||"today"}.pdf`};
+}
+$("lgBtn").addEventListener("click", async ()=>{
+  const msg=$("hMsg"); msg.className="msg";
+  if(!window.jspdf){ msg.className="msg err"; msg.textContent="The PDF maker could not load. Check your internet connection and reload."; return; }
+  try{ const {blob,fname}=ledgerFile(); await offerFile(blob,fname,msg,"Ledger PDF downloaded."); }
+  catch(e){ msg.className="msg err"; msg.textContent=e.message; }
+});
+(function(){ const [a,b]=fyRange(todayISO()); $("lgFrom").value=a; $("lgTo").value=b; })();
+
+function applyCfg(){ fillSettings(); fillPeriodSelect(); renderMembers(); update(); renderHistory(); }
+
+/* ---------- boot ---------- */
+$("rDate").value=todayISO(); fillSettings(); fillPeriodSelect(); renderMembers(); renderHistory(); update();
+
+/* ================= SOCIETY: expenses, alerts, tasks, contacts, documents ================= */
+const DEFAULT_HEADS=["Light bill – Meter 1","Light bill – Meter 2","Lift maintenance (annual AMC)","Lift repairs","Overhead tank cleaning contract","Housekeeping labour wages","Watchman salary","Water / plumbing repairs","Electrical repairs","Stationery & printing","Bank charges","Other"];
+const DOC_CATS=["Registration & bye-laws","Share certificates","Meeting minutes","Audit reports","Property tax & bills","Insurance","Contracts & AMC","Building plans & NOC","Bank documents","Other"];
+const blankSoc=()=>({
+  heads:[...DEFAULT_HEADS], expenses:[], tasks:[], docs:[], complaints:[],
+  contacts:["Plumber","Electrician","Lift maintenance","Watchman","Cleaning agency"].map((r,i)=>({id:"c"+(i+1),role:r,name:"",phone:"",alt:"",notes:""})),
+  reminders:[
+    {id:"m1",title:"Overhead tank cleaning",due:"",every:6,before:7,notes:"",lastDone:""},
+    {id:"m2",title:"Lift maintenance AMC renewal",due:"",every:12,before:30,notes:"",lastDone:""},
+    {id:"m3",title:"Light bill – Meter 1 payment",due:"",every:2,before:5,notes:"",lastDone:""},
+    {id:"m4",title:"Light bill – Meter 2 payment",due:"",every:2,before:5,notes:"",lastDone:""},
+    {id:"m5",title:"Housekeeping labour wages",due:"",every:1,before:2,notes:"",lastDone:""},
+  ]});
+function normSoc(s){ const b=blankSoc(); if(!s) return b; return {...b,...s, heads:(s.heads&&s.heads.length)?s.heads:b.heads}; }
+let soc=blankSoc();
+const uid=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const daysUntil=iso=>Math.round((new Date(iso+"T00:00")-new Date(todayISO()+"T00:00"))/864e5);
+function addMonths(iso,n){ const [y,m,d]=iso.split("-").map(Number); const t=new Date(y,m-1+n,1); const last=new Date(t.getFullYear(),t.getMonth()+1,0).getDate(); t.setDate(Math.min(d,last)); return isoOf(t); }
+function setMsg(el,cls,t){ el.className="msg"+(cls?" "+cls:""); el.textContent=t; }
+const fmtSize=b=>b>1048576?(b/1048576).toFixed(1)+" MB":Math.max(1,Math.round(b/1024))+" KB";
+function memberLabel(m){ return `${m.flatNo}${m.name?" – "+m.name:""}`; }
+
+/* ---------- file store (IndexedDB) ---------- */
+const LOCALDB={
+  open(){ if(this.p) return this.p; this.p=new Promise((res,rej)=>{ const r=indexedDB.open("stuti-avenue-files",1); r.onupgradeneeded=()=>r.result.createObjectStore("files",{keyPath:"id"}); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); return this.p; },
+  async run(mode,fn){ const db=await this.open(); return new Promise((res,rej)=>{ const t=db.transaction("files",mode); let out; const r=fn(t.objectStore("files")); if(r) r.onsuccess=()=>{ out=r.result; }; t.oncomplete=()=>res(out); t.onerror=()=>rej(t.error); t.onabort=()=>rej(t.error||new Error("Storage full")); }); },
+  put(f){ return this.run("readwrite",s=>s.put(f)); }, get(id){ return this.run("readonly",s=>s.get(id)); },
+  del(id){ return this.run("readwrite",s=>s.delete(id)); }, all(){ return this.run("readonly",s=>s.getAll()); }, clear(){ return this.run("readwrite",s=>s.clear()); }
+};
+/* file API: local cache, plus the shared database when online sharing is on */
+const IDB={
+  async put(f){ await LOCALDB.put(f); if(CLOUD.on) await cloudPutFile(f); },
+  async get(id){ let f=await LOCALDB.get(id); if(!f && CLOUD.on){ f=await cloudGetFile(id); if(f) await LOCALDB.put(f).catch(()=>{}); } return f; },
+  async del(id){ await LOCALDB.del(id).catch(()=>{}); if(CLOUD.on) await cloudDelFile(id); },
+  async all(){ if(!CLOUD.on) return LOCALDB.all(); const ids=await cloudFileIds(); const out=[]; for(const id of ids){ const f=await IDB.get(id); if(f) out.push(f); } return out; },
+  clear(){ return LOCALDB.clear(); }
+};
+const urlCache={};
+async function fileURL(id){ if(urlCache[id]) return urlCache[id]; const f=await IDB.get(id); if(!f) return null; return urlCache[id]=URL.createObjectURL(f.blob); }
+async function shrinkImage(file){
+  try{
+    const bmp=await createImageBitmap(file); const sc=Math.min(1,1600/Math.max(bmp.width,bmp.height));
+    const c=document.createElement("canvas"); c.width=Math.round(bmp.width*sc); c.height=Math.round(bmp.height*sc);
+    const g=c.getContext("2d"); g.fillStyle="#fff"; g.fillRect(0,0,c.width,c.height); g.drawImage(bmp,0,0,c.width,c.height);
+    const blob=await new Promise(r=>c.toBlob(r,"image/jpeg",0.8));
+    if(blob) return {blob,w:c.width,h:c.height};
+  }catch(e){}
+  return null;
+}
+async function storeFile(file){
+  let blob=file, name=file.name||"file", type=file.type||"application/octet-stream";
+  if(type.startsWith("image/") && type!=="image/gif"){ const s=await shrinkImage(file); if(s && s.blob.size<file.size){ blob=s.blob; type="image/jpeg"; name=name.replace(/\.\w+$/,"")+".jpg"; } }
+  const id=uid("F"); await IDB.put({id,name,type,size:blob.size,blob,addedAt:new Date().toISOString()}); return id;
+}
+const blobToDataURL=b=>new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(r.error); r.readAsDataURL(b); });
+async function exportFiles(){ const all=await IDB.all(); const out=[]; for(const f of all) out.push({id:f.id,name:f.name,type:f.type,size:f.size,addedAt:f.addedAt,data:await blobToDataURL(f.blob)}); return out; }
+async function importFiles(list){ await IDB.clear(); Object.keys(urlCache).forEach(k=>{ URL.revokeObjectURL(urlCache[k]); delete urlCache[k]; });
+  for(const f of list){ const blob=await (await fetch(f.data)).blob(); await IDB.put({id:f.id,name:f.name,type:f.type,size:blob.size,blob,addedAt:f.addedAt}); } }
+
+/* ---------- viewer ---------- */
+let viewing=null;
+async function openFile(id){
+  const f=await IDB.get(id); if(!f){ return; }
+  viewing=f; const url=await fileURL(id);
+  $("vName").textContent=f.name; const body=$("vBody");
+  body.innerHTML = f.type.startsWith("image/") ? `<img src="${url}" alt="">`
+    : `<div class="vpdf"><p><b>${esc(f.name)}</b><br>${fmtSize(f.size)}</p><p><a class="btn" href="${url}" target="_blank" rel="noopener">Open PDF</a></p><p class="hint">If it doesn't open, use Share or Save.</p></div>`;
+  $("viewer").hidden=false;
+}
+$("vClose").addEventListener("click",()=>{ $("viewer").hidden=true; viewing=null; });
+$("vSave").addEventListener("click",()=>{ if(viewing) saveBlob(viewing.blob,viewing.name); });
+$("vShare").addEventListener("click",()=>{ if(viewing) shareFile(viewing.blob,viewing.name,$("exMsg"),viewing.type); });
+document.addEventListener("click",e=>{ const id=e.target.closest("[data-file]")?.dataset.file; if(id){ e.preventDefault(); openFile(id); } });
+
+/* ---------- tabs + alerts ---------- */
+const ALL_TABS=["receipt","history","members","expenses","tasks","contacts","docs","complaints","reports","settings","backup"];
+function goTab(t){ if(t==="tasks") renderTasks(); if(t==="expenses") renderExpenses(); if(t==="complaints") renderComplaints(); if(t==="reports") renderReports(); document.querySelectorAll("nav.tabs button").forEach(x=>x.setAttribute("aria-selected", x.dataset.tab===t)); ALL_TABS.forEach(k=>{ const s=$("tab-"+k); if(s) s.hidden=k!==t; }); window.scrollTo(0,0); }
+function rmState(r){
+  if(!r.due) return {cls:"none",txt:"No date set",n:9999};
+  const n=daysUntil(r.due);
+  if(n<0) return {cls:"bad",txt:`Overdue ${-n} day${n===-1?"":"s"}`,n};
+  if(n===0) return {cls:"bad",txt:"Due today",n};
+  if(n<=(Number(r.before)||0)) return {cls:"warn",txt:`Due in ${n} day${n===1?"":"s"}`,n};
+  return {cls:"ok",txt:`Due ${fmtDate(r.due)}`,n};
+}
+function renderAlerts(){
+  const items=[];
+  soc.reminders.forEach(r=>{ const s=rmState(r); if(s.cls==="bad"||s.cls==="warn") items.push({n:s.n,html:`<b>${esc(r.title)}</b> — ${s.txt}`,tab:"tasks"}); });
+  soc.tasks.filter(t=>!t.done && t.due && daysUntil(t.due)<=2).forEach(t=>{ const n=daysUntil(t.due); items.push({n,html:`Task <b>${esc(t.title)}</b> (${esc(whoName(t.who))}) — ${n<0?`overdue ${-n} day${n===-1?"":"s"}`:n===0?"due today":`due in ${n} day${n===1?"":"s"}`}`,tab:"tasks"}); });
+  if(ROLE!=="viewer"){ const oc=(soc.complaints||[]).filter(c=>c.status!=="Resolved").length; if(oc) items.push({n:-1,html:`<b>${oc} open complaint${oc>1?"s":""}</b> waiting for the committee`,tab:"complaints"}); }
+  items.sort((a,b)=>a.n-b.n);
+  const box=$("alerts");
+  box.hidden=!items.length;
+  box.innerHTML = items.length ? `<div class="altitle">Alerts (${items.length})</div>`+items.slice(0,6).map(i=>`<button type="button" class="alrow" data-go="${i.tab}">${i.html}</button>`).join("")+(items.length>6?`<div class="hint">+ ${items.length-6} more on Tasks &amp; alerts</div>`:"") : "";
+}
+document.addEventListener("click",e=>{ const t=e.target.closest("[data-go]")?.dataset.go; if(t) goTab(t); });
+
+/* ---------- EXPENSES ---------- */
+let exEdit=null, exKeep=[], exNew=[];
+const exMethod=()=>document.querySelector('input[name="exMethod"]:checked').value;
+function nextVoucher(){ return soc.expenses.reduce((m,x)=>Math.max(m,Number(x.seq)||0),0)+1; }
+function fillHeads(){
+  const sel=$("exHead"), keep=sel.value;
+  sel.innerHTML=soc.heads.map(h=>`<option>${esc(h)}</option>`).join("");
+  if(keep && soc.heads.includes(keep)) sel.value=keep;
+  const fh=$("exFHead"), k2=fh.value;
+  const used=[...new Set([...soc.heads,...soc.expenses.map(x=>x.head)])];
+  fh.innerHTML=`<option value="">All heads</option>`+used.map(h=>`<option>${esc(h)}</option>`).join(""); fh.value=k2;
+  $("exHeadsTxt").value=soc.heads.join("\n");
+  $("exParties").innerHTML=[...new Set(soc.expenses.map(x=>x.party).filter(Boolean))].map(p=>`<option value="${esc(p)}">`).join("");
+}
+function exUpdateForm(){
+  const m=exMethod(); $("exRefBox").hidden=m==="Cash";
+  $("exRefLbl").firstChild.textContent = m==="Cheque"?"Cheque no.":"Transaction ref.";
+  $("exBankLbl").hidden = m!=="Cheque";
+  $("exOtherBox").hidden = $("exHead").value!=="Other";
+  if(!exEdit) $("exNo").value="V-"+pad(nextVoucher());
+}
+$("exForm").addEventListener("change",exUpdateForm);
+$("exHead").addEventListener("change",exUpdateForm);
+async function renderThumbs(){
+  const parts=[];
+  for(const id of exKeep){ const f=await IDB.get(id); if(!f) continue; const url=await fileURL(id);
+    parts.push(`<div class="thumb">${f.type.startsWith("image/")?`<img src="${url}" alt="" data-file="${id}">`:`<button type="button" class="pdfchip" data-file="${id}">PDF</button>`}<span>${esc(f.name)}</span><button type="button" class="x" data-rmkeep="${id}" aria-label="Remove">×</button></div>`); }
+  exNew.forEach((f,i)=>{ const isImg=f.type.startsWith("image/"); if(isImg && !f._url) f._url=URL.createObjectURL(f);
+    parts.push(`<div class="thumb">${isImg?`<img src="${f._url}" alt="">`:`<span class="pdfchip">PDF</span>`}<span>${esc(f.name)}</span><button type="button" class="x" data-rmnew="${i}" aria-label="Remove">×</button></div>`); });
+  $("exThumbs").innerHTML=parts.join("");
+}
+$("exFiles").addEventListener("change",()=>{ exNew.push(...$("exFiles").files); $("exFiles").value=""; renderThumbs(); });
+$("exThumbs").addEventListener("click",e=>{
+  const k=e.target.dataset.rmkeep, n=e.target.dataset.rmnew;
+  if(k){ exKeep=exKeep.filter(x=>x!==k); renderThumbs(); }
+  if(n!==undefined){ exNew.splice(Number(n),1); renderThumbs(); }
+});
+function exReset(){
+  exEdit=null; exKeep=[]; exNew=[]; $("exForm").reset(); $("exDate").value=todayISO();
+  $("exTitle").textContent="New expense entry"; $("exSave").textContent="Save expense"; renderThumbs(); exUpdateForm();
+}
+$("exCancel").addEventListener("click",()=>{ exReset(); setMsg($("exMsg"),"",""); });
+$("exForm").addEventListener("submit",async e=>{
+  e.preventDefault(); const msg=$("exMsg");
+  const amt=Math.round(Number($("exAmt").value)||0);
+  if(amt<=0){ setMsg(msg,"err","Enter the amount paid."); return; }
+  if($("exHead").value==="Other" && !$("exOther").value.trim()){ setMsg(msg,"err","Describe what the expense is for."); return; }
+  $("exSave").disabled=true;
+  try{
+    const newIds=[]; for(const f of exNew) newIds.push(await storeFile(f));
+    const old=exEdit?soc.expenses.find(x=>x.id===exEdit):null;
+    if(old) for(const id of (old.files||[])) if(!exKeep.includes(id)) await IDB.del(id).catch(()=>{});
+    const m=exMethod();
+    const rec={id:old?old.id:uid("e"), seq:old?old.seq:nextVoucher(), date:$("exDate").value||todayISO(), head:$("exHead").value, other:$("exOther").value.trim(),
+      party:$("exParty").value.trim(), bill:$("exBill").value.trim(), period:$("exPeriod").value.trim(), amount:amt, method:m,
+      ref:m==="Cash"?"":$("exRef").value.trim(), bank:m==="Cheque"?$("exBank").value.trim():"", remarks:$("exRemarks").value.trim(),
+      files:[...exKeep,...newIds], createdAt:old?old.createdAt:new Date().toISOString()};
+    if(old) Object.assign(old,rec); else soc.expenses.push(rec);
+    persist(); setMsg(msg,"ok",`${old?"Updated":"Saved"} voucher V-${pad(rec.seq)} — Rs. ${inr(rec.amount)}${rec.files.length?` with ${rec.files.length} attachment${rec.files.length>1?"s":""}`:""}.`);
+    exNew.forEach(f=>f._url&&URL.revokeObjectURL(f._url)); exReset(); renderExpenses();
+  }catch(err){ setMsg(msg,"err","Could not save: "+(err.message||err)+". The phone may be out of space."); }
+  finally{ $("exSave").disabled=false; }
+});
+const exHeadText=x=>x.head==="Other"&&x.other?`Other: ${x.other}`:x.head;
+function exFiltered(){
+  const mo=$("exFMonth").value, hd=$("exFHead").value, q=$("exFSearch").value.trim().toLowerCase();
+  return soc.expenses.filter(x=>(!mo||x.date.slice(0,7)===mo)&&(!hd||x.head===hd)&&(!q||[x.party,x.bill,x.other,x.remarks,x.period,"v-"+pad(x.seq)].join(" ").toLowerCase().includes(q)))
+    .sort((a,b)=>b.date.localeCompare(a.date)||b.seq-a.seq);
+}
+function renderExpenses(){
+  const fm=$("exFMonth"), k=fm.value;
+  const months=[...new Set(soc.expenses.map(x=>x.date.slice(0,7)))].sort().reverse();
+  fm.innerHTML=`<option value="">All months</option>`+months.map(m=>{ const [y,mm]=m.split("-"); return `<option value="${m}">${MONTHS[Number(mm)-1]} ${y}</option>`; }).join(""); fm.value=months.includes(k)?k:"";
+  fillHeads();
+  const list=exFiltered();
+  $("exStats").innerHTML=`<span>Entries <b>${list.length}</b></span><span>Total <b>Rs. ${inr(list.reduce((s,x)=>s+x.amount,0))}</b></span>`;
+  $("exList").innerHTML = list.length ? list.map(x=>`<div class="card">
+      <div class="crow"><span class="num muted">V-${pad(x.seq)} · ${fmtDate(x.date)}</span><b class="num amt">Rs. ${inr(x.amount)}</b></div>
+      <div class="ctitle">${esc(exHeadText(x))}</div>
+      <div class="muted">${esc([x.party,x.bill?"Bill "+x.bill:"",x.period].filter(Boolean).join(" · "))||"&nbsp;"}</div>
+      <div class="muted">${esc(x.method)}${x.ref?" "+esc(x.ref):""}${x.bank?" · "+esc(x.bank):""}${x.remarks?" · "+esc(x.remarks):""}</div>
+      <div class="crow cfoot">
+        <div class="links">${(x.files||[]).map((id,i)=>`<button type="button" class="chip" data-file="${id}">Bill ${i+1}</button>`).join("")||`<span class="chip warnchip">No bill attached</span>`}</div>
+        <div class="links"><button class="btn ghost small" type="button" data-exedit="${x.id}">Edit</button><button class="btn danger small" type="button" data-exdel="${x.id}">Delete</button></div>
+      </div></div>`).join("")
+    : `<div class="empty">${soc.expenses.length?"No expenses match these filters.":"No expenses yet. Enter the first bill on the left, e.g. a light bill, and attach its photo."}</div>`;
+}
+["exFMonth","exFHead"].forEach(id=>$(id).addEventListener("change",renderExpenses));
+$("exFSearch").addEventListener("input",renderExpenses);
+$("exList").addEventListener("click",async e=>{
+  const ed=e.target.dataset.exedit, dl=e.target.dataset.exdel;
+  if(ed){ const x=soc.expenses.find(v=>v.id===ed); if(!x) return;
+    exEdit=x.id; exKeep=[...(x.files||[])]; exNew=[];
+    $("exDate").value=x.date; if(!soc.heads.includes(x.head)){ soc.heads.splice(soc.heads.length-1,0,x.head); fillHeads(); } $("exHead").value=x.head; $("exOther").value=x.other||"";
+    $("exParty").value=x.party||""; $("exBill").value=x.bill||""; $("exPeriod").value=x.period||""; $("exAmt").value=x.amount;
+    document.querySelector(`input[name="exMethod"][value="${x.method}"]`).checked=true; $("exRef").value=x.ref||""; $("exBank").value=x.bank||""; $("exRemarks").value=x.remarks||"";
+    $("exNo").value="V-"+pad(x.seq); $("exTitle").textContent=`Edit voucher V-${pad(x.seq)}`; $("exSave").textContent="Update expense";
+    exUpdateForm(); renderThumbs(); $("exForm").scrollIntoView({behavior:"smooth"}); }
+  if(dl){
+    if(!e.target.dataset.armed){ e.target.dataset.armed="1"; e.target.textContent="Confirm delete"; return; }
+    const x=soc.expenses.find(v=>v.id===dl); if(!x) return;
+    for(const id of (x.files||[])) await IDB.del(id).catch(()=>{});
+    soc.expenses=soc.expenses.filter(v=>v!==x); persist(); renderExpenses(); setMsg($("exMsg"),"ok",`Deleted voucher V-${pad(x.seq)}.`);
+  }
+});
+$("exHeadsSave").addEventListener("click",()=>{
+  const list=[...new Set($("exHeadsTxt").value.split("\n").map(s=>s.trim()).filter(Boolean))];
+  if(!list.includes("Other")) list.push("Other");
+  soc.heads=list; persist(); fillHeads(); exUpdateForm(); setMsg($("exMsg"),"ok","Expense heads saved.");
+});
+
+/* ---------- expense register PDF ---------- */
+function pdfTable(doc,o){
+  const {cols,rows,M,W,H,head}=o; let y=o.y; const rowH=6;
+  const drawHead=()=>{ doc.setFillColor(227,233,251); doc.rect(M,y,W-2*M,6.5,"F"); doc.setFont("helvetica","bold"); doc.setFontSize(7.5); doc.setTextColor(35,64,168);
+    let x=M; cols.forEach(c=>{ doc.text(c.h.toUpperCase(), c.r?x+c.w-1.5:x+1.5, y+4.4, {align:c.r?"right":"left"}); x+=c.w; }); y+=6.5; };
+  drawHead();
+  for(const row of rows){
+    if(y+rowH>H-14){ doc.addPage(); y=head(); drawHead(); }
+    if(row.fill){ doc.setFillColor(...row.fill); doc.rect(M,y,W-2*M,rowH,"F"); }
+    doc.setFont("helvetica",row.bold?"bold":"normal"); doc.setFontSize(8.3); doc.setTextColor(24,33,58);
+    let x=M; cols.forEach((c,i)=>{ const t=doc.splitTextToSize(String(row.cells[i]??""),c.w-3)[0]||""; doc.text(t, c.r?x+c.w-1.5:x+1.5, y+4.1, {align:c.r?"right":"left"}); x+=c.w; });
+    doc.setDrawColor(230,233,240); doc.setLineWidth(0.15); doc.line(M,y+rowH,W-M,y+rowH); y+=rowH;
+  }
+  return y;
+}
+async function buildExpenseRegister(from,to,withPhotos){
+  const { jsPDF } = window.jspdf; const doc=new jsPDF({unit:"mm",format:"a4"});
+  const W=210,H=297,M=12; const inR=d=>(!from||d>=from)&&(!to||d<=to);
+  const list=soc.expenses.filter(x=>inR(x.date)).sort((a,b)=>a.date.localeCompare(b.date)||a.seq-b.seq);
+  const rng=`${from?fmtDate(from):"start"} to ${to?fmtDate(to):"today"}`;
+  const head=(title="EXPENSE REGISTER")=>{
+    doc.setFont("helvetica","bold"); doc.setFontSize(12.5); doc.setTextColor(24,33,58); doc.text(cfg.name,M,14,{maxWidth:W-2*M-55});
+    doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(93,104,134); doc.text([cfg.reg?"Reg. No. "+cfg.reg:"",cfg.address].filter(Boolean).join("  |  "),M,19.5,{maxWidth:W-2*M-55});
+    doc.setFont("helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(35,64,168); doc.text(title,W-M,14,{align:"right"});
+    doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(93,104,134); doc.text(rng,W-M,19.5,{align:"right"});
+    doc.setDrawColor(213,219,231); doc.setLineWidth(0.3); doc.line(M,23,W-M,23); return 28;
+  };
+  let y=head();
+  // summary
+  const byHead={}; list.forEach(x=>{ const h=exHeadText(x).replace(/^Other: .*/,"Other"); byHead[h]=(byHead[h]||0)+x.amount; });
+  const total=list.reduce((s,x)=>s+x.amount,0);
+  const collected=receipts.filter(r=>inR(r.date)).reduce((s,r)=>s+(Number(r.amount)||0),0);
+  doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(24,33,58); doc.text("Summary by head",M,y); y+=3;
+  y=pdfTable(doc,{y,M,W,H,head,cols:[{h:"Expense head",w:136},{h:"Entries",w:20,r:1},{h:"Amount (Rs.)",w:30,r:1}],
+    rows:[...Object.keys(byHead).sort().map(h=>({cells:[h,list.filter(x=>exHeadText(x).replace(/^Other: .*/,"Other")===h).length,inr(byHead[h])]})),
+      {bold:true,fill:[238,241,246],cells:["Total expenses",list.length,inr(total)]},
+      {cells:["Collected from members in this period (all receipts)","",inr(collected)]},
+      {bold:true,fill:total>collected?[252,228,226]:[223,242,232],cells:[total>collected?"Expenses more than collection":"Collection more than expenses","",inr(Math.abs(collected-total))]}]});
+  y+=8; if(y>H-40){ doc.addPage(); y=head(); }
+  doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(24,33,58); doc.text("All expense vouchers",M,y); y+=3;
+  y=pdfTable(doc,{y,M,W,H,head,cols:[{h:"Voucher",w:17},{h:"Date",w:19},{h:"Head",w:44},{h:"Paid to",w:34},{h:"Bill no. / period",w:30},{h:"Mode",w:22},{h:"Amount",w:20,r:1}],
+    rows:list.length?[...list.map(x=>({cells:["V-"+pad(x.seq),fmtDate(x.date),exHeadText(x),x.party||"-",[x.bill,x.period].filter(Boolean).join(" / ")||"-",x.method+(x.ref?" "+x.ref:""),inr(x.amount)]})),
+      {bold:true,fill:[223,242,232],cells:["","","TOTAL","","","",inr(total)]}]:[{cells:["","","No expenses in this period","","","",""]}]});
+  // photos
+  if(withPhotos){
+    for(const x of list){ for(const id of (x.files||[])){
+      const f=await IDB.get(id); if(!f) continue;
+      doc.addPage(); let py=head("BILL ATTACHMENT");
+      doc.setFont("helvetica","bold"); doc.setFontSize(9.5); doc.setTextColor(24,33,58);
+      doc.text(`V-${pad(x.seq)}  ·  ${fmtDate(x.date)}  ·  ${exHeadText(x)}  ·  ${x.party||""}  ·  Rs. ${inr(x.amount)}`,M,py,{maxWidth:W-2*M}); py+=5;
+      if(!f.type.startsWith("image/")){ doc.setFont("helvetica","normal"); doc.setTextColor(93,104,134); doc.text(`PDF attachment "${f.name}" is kept in the app (open it from the Expenses tab).`,M,py+6); continue; }
+      const s=await shrinkImage(f.blob); if(!s) continue; const data=await blobToDataURL(s.blob);
+      const maxW=W-2*M, maxH=H-py-14, sc=Math.min(maxW/s.w,maxH/s.h);
+      doc.addImage(data,"JPEG",M+(maxW-s.w*sc)/2,py+2,s.w*sc,s.h*sc);
+    } }
+  }
+  const n=doc.getNumberOfPages(), gen=new Date().toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"});
+  for(let i=1;i<=n;i++){ doc.setPage(i); doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(150,160,185); doc.text(`Generated ${gen}`,M,H-7); doc.text(`Page ${i} of ${n}`,W-M,H-7,{align:"right"}); }
+  return doc;
+}
+async function exReport(share){
+  const msg=$("exMsg");
+  if(!window.jspdf){ setMsg(msg,"err","The PDF maker could not load. Connect to the internet once and reload the app."); return; }
+  const from=$("exRFrom").value, to=$("exRTo").value;
+  if(from&&to&&to<from){ setMsg(msg,"err","The 'To' date is before the 'From' date."); return; }
+  setMsg(msg,"","Making the register…");
+  try{
+    const blob=(await buildExpenseRegister(from,to,$("exRPhotos").checked)).output("blob");
+    const fname=`Stuti Avenue expenses ${from||"start"} to ${to||"today"}.pdf`;
+    if(share) await shareFile(blob,fname,msg,"application/pdf"); else { saveBlob(blob,fname); setMsg(msg,"ok","Expense register PDF downloaded."); }
+    if(share && msg.textContent==="Making the register…") setMsg(msg,"","");
+  }catch(err){ setMsg(msg,"err","Could not make the PDF: "+(err.message||err)); }
+}
+$("exRDown").addEventListener("click",()=>exReport(false));
+$("exRShare").addEventListener("click",()=>exReport(true));
+
+/* ---------- REMINDERS ---------- */
+let rmEdit=null;
+function rmReset(){ rmEdit=null; $("rmForm").reset(); $("rmBefore").value=7; $("rmSave").textContent="Save reminder"; }
+$("rmCancel").addEventListener("click",rmReset);
+$("rmForm").addEventListener("submit",e=>{
+  e.preventDefault(); const t=$("rmTitle").value.trim(); if(!t) return;
+  const rec={title:t,due:$("rmDue").value,every:Number($("rmEvery").value)||0,before:Math.max(0,Number($("rmBefore").value)||0),notes:$("rmNotes").value.trim()};
+  if(rmEdit) Object.assign(soc.reminders.find(r=>r.id===rmEdit),rec); else soc.reminders.push({id:uid("m"),lastDone:"",...rec});
+  persist(); setMsg($("rmMsg"),"ok",`Reminder "${t}" saved.`); rmReset(); renderReminders();
+});
+const everyText=n=>!n?"One time":n===1?"Every month":n===12?"Every year":`Every ${n} months`;
+function gcalLink(r){
+  const d=r.due.replace(/-/g,""), d2=addMonths(r.due,0); const nx=new Date(d2+"T00:00"); nx.setDate(nx.getDate()+1);
+  const p=new URLSearchParams({action:"TEMPLATE",text:`${r.title} – Stuti Avenue`,dates:`${d}/${isoOf(nx).replace(/-/g,"")}`,details:[r.notes,`Reminder from Stuti Avenue society app.`].filter(Boolean).join("\n")});
+  if(r.every) p.set("recur",`RRULE:FREQ=MONTHLY;INTERVAL=${r.every}`);
+  return "https://calendar.google.com/calendar/render?"+p.toString();
+}
+function icsBlob(r){
+  const d=r.due.replace(/-/g,""); const nx=new Date(r.due+"T00:00"); nx.setDate(nx.getDate()+1);
+  const e=s=>String(s).replace(/[\\;,]/g,m=>"\\"+m).replace(/\n/g,"\\n"); const before=Number(r.before)||0;
+  const L=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Stuti Avenue//Society//EN","BEGIN:VEVENT",`UID:${r.id}@stuti-avenue`,`DTSTAMP:${new Date().toISOString().replace(/[-:]/g,"").slice(0,15)}Z`,
+    `DTSTART;VALUE=DATE:${d}`,`DTEND;VALUE=DATE:${isoOf(nx).replace(/-/g,"")}`,`SUMMARY:${e(r.title+" – Stuti Avenue")}`];
+  if(r.notes) L.push(`DESCRIPTION:${e(r.notes)}`); if(r.every) L.push(`RRULE:FREQ=MONTHLY;INTERVAL=${r.every}`);
+  if(before>0) L.push("BEGIN:VALARM","ACTION:DISPLAY",`DESCRIPTION:${e(r.title)}`,`TRIGGER:-P${before-1}DT15H`,"END:VALARM");
+  L.push("BEGIN:VALARM","ACTION:DISPLAY",`DESCRIPTION:${e(r.title)}`,"TRIGGER:PT9H","END:VALARM","END:VEVENT","END:VCALENDAR");
+  return new Blob([L.join("\r\n")],{type:"text/calendar"});
+}
+function renderReminders(){
+  const list=[...soc.reminders].sort((a,b)=>rmState(a).n-rmState(b).n);
+  $("rmList").innerHTML=list.length?list.map(r=>{ const s=rmState(r); return `<div class="card">
+    <div class="crow"><div class="ctitle">${esc(r.title)}</div><span class="pill st-${s.cls}">${s.txt}</span></div>
+    <div class="muted">${everyText(r.every)}${r.due?` · next ${fmtDate(r.due)}`:""}${r.before?` · alert ${r.before} day${r.before==1?"":"s"} before`:""}${r.lastDone?` · last done ${fmtDate(r.lastDone)}`:""}</div>
+    ${r.notes?`<div class="muted">${esc(r.notes)}</div>`:""}
+    <div class="links" style="margin-top:6px">
+      ${r.due?`<button class="btn small" type="button" data-rmdone="${r.id}">${r.every?"Done – set next date":"Mark done"}</button>`:`<button class="btn small" type="button" data-rmedit="${r.id}">Set date</button>`}
+      ${r.due?`<a class="btn ghost small" href="${gcalLink(r)}" target="_blank" rel="noopener">Google Calendar</a><button class="btn ghost small" type="button" data-rmics="${r.id}">Calendar file</button>`:""}
+      <button class="btn ghost small" type="button" data-rmedit="${r.id}">Edit</button><button class="btn danger small" type="button" data-rmdel="${r.id}">Delete</button>
+    </div></div>`; }).join(""):`<div class="empty">No reminders yet.</div>`;
+  renderAlerts();
+}
+$("rmList").addEventListener("click",e=>{
+  const ds=e.target.dataset;
+  if(ds.rmdone){ const r=soc.reminders.find(x=>x.id===ds.rmdone); r.lastDone=todayISO();
+    if(r.every){ let n=addMonths(r.due,r.every); while(n<=todayISO()) n=addMonths(n,r.every); r.due=n; setMsg($("rmMsg"),"ok",`"${r.title}" done. Next due ${fmtDate(r.due)}.`); }
+    else { soc.reminders=soc.reminders.filter(x=>x!==r); setMsg($("rmMsg"),"ok",`"${r.title}" marked done and removed.`); }
+    persist(); renderReminders(); }
+  if(ds.rmedit){ const r=soc.reminders.find(x=>x.id===ds.rmedit); rmEdit=r.id; $("rmTitle").value=r.title; $("rmDue").value=r.due||""; $("rmEvery").value=String(r.every||0); $("rmBefore").value=r.before??7; $("rmNotes").value=r.notes||""; $("rmSave").textContent="Update reminder"; $("rmForm").scrollIntoView({behavior:"smooth"}); $("rmDue").focus(); }
+  if(ds.rmics){ const r=soc.reminders.find(x=>x.id===ds.rmics); saveBlob(icsBlob(r),`${r.title}.ics`); }
+  if(ds.rmdel){ if(!e.target.dataset.armed){ e.target.dataset.armed="1"; e.target.textContent="Confirm delete"; return; } soc.reminders=soc.reminders.filter(x=>x.id!==ds.rmdel); persist(); renderReminders(); }
+});
+
+/* ---------- TASKS ---------- */
+let tkEdit=null;
+function whoName(w){ if(!w) return "Unassigned"; if(w.startsWith("m:")){ const m=members.find(x=>x.id===w.slice(2)); return m?memberLabel(m):"Member"; } if(w.startsWith("c:")){ const c=soc.contacts.find(x=>x.id===w.slice(2)); return c?`${c.role}${c.name?" – "+c.name:""}`:"Contact"; } return w.slice(2); }
+function whoPhone(w){ if(!w) return ""; if(w.startsWith("m:")) return members.find(x=>x.id===w.slice(2))?.mobile||""; if(w.startsWith("c:")) return soc.contacts.find(x=>x.id===w.slice(2))?.phone||""; return ""; }
+function fillWho(){
+  const sel=$("tkWho"), k=sel.value;
+  sel.innerHTML=`<option value="">Choose…</option><optgroup label="Members">`+[...members].sort(flatSort).map(m=>`<option value="m:${esc(m.id)}">${esc(memberLabel(m))}</option>`).join("")+`</optgroup>`+
+    `<optgroup label="Committee"><option value="x:Secretary">Secretary${cfg.secretary?" ("+esc(cfg.secretary)+")":""}</option><option value="x:Treasurer">Treasurer${cfg.treasurer?" ("+esc(cfg.treasurer)+")":""}</option><option value="x:Committee">Managing committee</option></optgroup>`+
+    `<optgroup label="Service contacts">`+soc.contacts.map(c=>`<option value="c:${esc(c.id)}">${esc(c.role)}${c.name?" – "+esc(c.name):""}</option>`).join("")+`</optgroup>`;
+  sel.value=k;
+}
+function tkReset(){ tkEdit=null; $("tkForm").reset(); $("tkSave").textContent="Save task"; }
+$("tkCancel").addEventListener("click",tkReset);
+$("tkForm").addEventListener("submit",e=>{
+  e.preventDefault(); const t=$("tkTitle").value.trim(); if(!t) return;
+  if(!$("tkWho").value){ setMsg($("tkMsg"),"err","Choose who the task is for."); return; }
+  const rec={title:t,who:$("tkWho").value,due:$("tkDue").value,notes:$("tkNotes").value.trim()};
+  if(tkEdit) Object.assign(soc.tasks.find(x=>x.id===tkEdit),rec); else soc.tasks.push({id:uid("t"),done:false,doneAt:"",createdAt:todayISO(),...rec});
+  persist(); setMsg($("tkMsg"),"ok",`Task saved for ${whoName(rec.who)}.`); tkReset(); renderTasks();
+});
+function tkWA(t){
+  const num=whoPhone(t.who).replace(/\D/g,""); const wa=num.length===10?"91"+num:num;
+  const txt=[`*${cfg.name}*`,`Task: ${t.title}`,t.due?`Please complete by ${fmtDate(t.due)}.`:"",t.notes||"","Thank you."].filter(Boolean).join("\n");
+  return `https://wa.me/${wa}?text=${encodeURIComponent(txt)}`;
+}
+function renderTasks(){
+  fillWho();
+  const f=document.querySelector('input[name="tkF"]:checked').value;
+  const list=soc.tasks.filter(t=>f==="all"||(f==="done"?t.done:!t.done)).sort((a,b)=>(a.done-b.done)||((a.due||"9999").localeCompare(b.due||"9999")));
+  $("tkList").innerHTML=list.length?list.map(t=>{ let chip="";
+      if(t.done) chip=`<span class="pill st-ok">Done ${t.doneAt?fmtDate(t.doneAt):""}</span>`;
+      else if(t.due){ const n=daysUntil(t.due); chip=`<span class="pill st-${n<0?"bad":n<=2?"warn":"none"}">${n<0?`Overdue ${-n}d`:n===0?"Due today":`Due ${fmtDate(t.due)}`}</span>`; }
+      return `<div class="card${t.done?" done":""}"><div class="crow"><div class="ctitle">${esc(t.title)}</div>${chip}</div>
+      <div class="muted">${esc(whoName(t.who))}${t.notes?" · "+esc(t.notes):""}</div>
+      <div class="links" style="margin-top:6px">
+        ${t.done?`<button class="btn ghost small" type="button" data-tkopen="${t.id}">Reopen</button>`:`<button class="btn small" type="button" data-tkdone="${t.id}">Mark done</button><a class="btn wa small" href="${tkWA(t)}" target="_blank" rel="noopener">WhatsApp</a>`}
+        <button class="btn ghost small" type="button" data-tkedit="${t.id}">Edit</button><button class="btn danger small" type="button" data-tkdel="${t.id}">Delete</button>
+      </div></div>`; }).join("")
+    :`<div class="empty">${f==="done"?"No finished tasks yet.":"No open tasks. Add one above and send it to the member on WhatsApp."}</div>`;
+  renderAlerts();
+}
+document.querySelectorAll('input[name="tkF"]').forEach(r=>r.addEventListener("change",renderTasks));
+$("tkList").addEventListener("click",e=>{
+  const ds=e.target.dataset;
+  if(ds.tkdone||ds.tkopen){ const t=soc.tasks.find(x=>x.id===(ds.tkdone||ds.tkopen)); t.done=!!ds.tkdone; t.doneAt=t.done?todayISO():""; persist(); renderTasks(); }
+  if(ds.tkedit){ const t=soc.tasks.find(x=>x.id===ds.tkedit); tkEdit=t.id; $("tkTitle").value=t.title; $("tkWho").value=t.who; $("tkDue").value=t.due||""; $("tkNotes").value=t.notes||""; $("tkSave").textContent="Update task"; $("tkForm").scrollIntoView({behavior:"smooth"}); }
+  if(ds.tkdel){ if(!e.target.dataset.armed){ e.target.dataset.armed="1"; e.target.textContent="Confirm delete"; return; } soc.tasks=soc.tasks.filter(x=>x.id!==ds.tkdel); persist(); renderTasks(); }
+});
+
+/* ---------- CONTACTS ---------- */
+let ctEdit=null;
+function ctReset(){ ctEdit=null; $("ctForm").reset(); $("ctTitle").textContent="Add contact"; $("ctSave").textContent="Save contact"; }
+$("ctCancel").addEventListener("click",ctReset);
+$("ctForm").addEventListener("submit",e=>{
+  e.preventDefault(); const role=$("ctRole").value.trim(); if(!role) return;
+  const rec={role,name:$("ctName").value.trim(),phone:$("ctPhone").value.trim(),alt:$("ctAlt").value.trim(),notes:$("ctNotes").value.trim()};
+  if(ctEdit) Object.assign(soc.contacts.find(c=>c.id===ctEdit),rec); else soc.contacts.push({id:uid("c"),...rec});
+  persist(); setMsg($("ctMsg"),"ok",`${role} saved.`); ctReset(); renderContacts();
+});
+const telHref=p=>"tel:"+String(p).replace(/[^\d+]/g,"");
+function waNum(p){ const n=String(p).replace(/\D/g,""); return n.length===10?"91"+n:n; }
+function renderContacts(){
+  $("ctList").innerHTML=soc.contacts.length?soc.contacts.map(c=>`<div class="card">
+    <div class="crow"><div><div class="eyebrow">${esc(c.role)}</div><div class="ctitle">${esc(c.name)||'<span class="muted">Name not added</span>'}</div></div></div>
+    <div class="num">${c.phone?`<a href="${telHref(c.phone)}" class="phone">${esc(c.phone)}</a>`:'<span class="muted">No number yet</span>'}${c.alt?` · <a href="${telHref(c.alt)}" class="phone">${esc(c.alt)}</a>`:""}</div>
+    ${c.notes?`<div class="muted">${esc(c.notes)}</div>`:""}
+    <div class="links" style="margin-top:6px">
+      ${c.phone?`<a class="btn small" href="${telHref(c.phone)}">Call</a><a class="btn wa small" href="https://wa.me/${waNum(c.phone)}" target="_blank" rel="noopener">WhatsApp</a><button class="btn ghost small" type="button" data-ctcopy="${c.id}">Copy number</button>`:""}
+      <button class="btn ghost small" type="button" data-ctedit="${c.id}">${c.phone?"Edit":"Add number"}</button><button class="btn danger small" type="button" data-ctdel="${c.id}">Delete</button>
+    </div></div>`).join(""):`<div class="empty">No contacts yet.</div>`;
+  fillWho();
+}
+$("ctList").addEventListener("click",async e=>{
+  const ds=e.target.dataset;
+  if(ds.ctedit){ const c=soc.contacts.find(x=>x.id===ds.ctedit); ctEdit=c.id; $("ctRole").value=c.role; $("ctName").value=c.name; $("ctPhone").value=c.phone; $("ctAlt").value=c.alt; $("ctNotes").value=c.notes; $("ctTitle").textContent=`Edit ${c.role}`; $("ctSave").textContent="Update contact"; $("ctForm").scrollIntoView({behavior:"smooth"}); $("ctName").focus(); }
+  if(ds.ctcopy){ const c=soc.contacts.find(x=>x.id===ds.ctcopy); try{ await navigator.clipboard.writeText(c.phone); e.target.textContent="Copied"; }catch(err){ e.target.textContent=c.phone; } }
+  if(ds.ctdel){ if(!e.target.dataset.armed){ e.target.dataset.armed="1"; e.target.textContent="Confirm delete"; return; } soc.contacts=soc.contacts.filter(x=>x.id!==ds.ctdel); persist(); renderContacts(); }
+});
+
+/* ---------- DOCUMENTS ---------- */
+async function photosToPDF(files){
+  const { jsPDF } = window.jspdf; const doc=new jsPDF({unit:"mm",format:"a4"}); const W=210,H=297,M=8;
+  for(let i=0;i<files.length;i++){
+    const s=await shrinkImage(files[i]); if(!s) throw new Error(`Could not read "${files[i].name}".`);
+    if(i) doc.addPage(); const data=await blobToDataURL(s.blob); const sc=Math.min((W-2*M)/s.w,(H-2*M)/s.h);
+    doc.addImage(data,"JPEG",(W-s.w*sc)/2,(H-s.h*sc)/2,s.w*sc,s.h*sc);
+  }
+  return doc.output("blob");
+}
+$("dcForm").addEventListener("submit",async e=>{
+  e.preventDefault(); const msg=$("dcMsg"); const files=[...$("dcFiles").files]; const title=$("dcTitle").value.trim();
+  if(!title||!files.length){ setMsg(msg,"err","Enter a name and choose a file."); return; }
+  const pdfs=files.filter(f=>f.type==="application/pdf"), imgs=files.filter(f=>f.type.startsWith("image/"));
+  if(pdfs.length&&imgs.length){ setMsg(msg,"err","Choose either one PDF or photos of the pages, not both."); return; }
+  if(pdfs.length>1){ setMsg(msg,"err","Choose one PDF at a time."); return; }
+  $("dcSave").disabled=true; setMsg(msg,"","Saving…");
+  try{
+    const safe=title.replace(/[\\/:*?"<>|]/g,"-");
+    let fileId;
+    if(pdfs.length){ fileId=uid("F"); await IDB.put({id:fileId,name:safe+".pdf",type:"application/pdf",size:pdfs[0].size,blob:pdfs[0],addedAt:new Date().toISOString()}); }
+    else { if(!window.jspdf) throw new Error("The PDF maker could not load. Connect to the internet once and reload the app.");
+      const blob=await photosToPDF(imgs); fileId=uid("F"); await IDB.put({id:fileId,name:safe+".pdf",type:"application/pdf",size:blob.size,blob,addedAt:new Date().toISOString()}); }
+    soc.docs.push({id:uid("d"),title,cat:$("dcCat").value,date:$("dcDate").value,notes:$("dcNotes").value.trim(),file:fileId,pages:imgs.length||null,addedAt:new Date().toISOString()});
+    persist(); setMsg(msg,"ok",`"${title}" saved${imgs.length?` as a ${imgs.length}-page PDF`:""}.`); $("dcForm").reset(); renderDocs();
+  }catch(err){ setMsg(msg,"err","Could not save: "+(err.message||err)); }
+  finally{ $("dcSave").disabled=false; }
+});
+async function renderDocs(){
+  $("dcCat").innerHTML=DOC_CATS.map(c=>`<option>${esc(c)}</option>`).join("");
+  const q=$("dcSearch").value.trim().toLowerCase();
+  const list=soc.docs.filter(d=>!q||[d.title,d.cat,d.notes].join(" ").toLowerCase().includes(q));
+  if(!list.length){ $("dcList").innerHTML=`<div class="empty">${soc.docs.length?"No documents match.":"No documents yet. Add the registration certificate, bye-laws, share certificates, AMC contracts and audit reports here."}</div>`; return; }
+  const sizes={}; for(const d of list){ const f=await IDB.get(d.file); sizes[d.id]=f?fmtSize(f.size):"missing"; }
+  const cats=[...new Set([...DOC_CATS,...list.map(d=>d.cat)])].filter(c=>list.some(d=>d.cat===c));
+  $("dcList").innerHTML=cats.map(c=>`<div class="folder"><div class="fhead">${esc(c)} <span class="muted">(${list.filter(d=>d.cat===c).length})</span></div>`+
+    list.filter(d=>d.cat===c).sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(d=>`<div class="card">
+      <div class="ctitle">${esc(d.title)}</div>
+      <div class="muted">${d.date?fmtDate(d.date)+" · ":""}PDF${d.pages?` · ${d.pages} page${d.pages>1?"s":""}`:""} · ${sizes[d.id]}${d.notes?" · "+esc(d.notes):""}</div>
+      <div class="links" style="margin-top:6px"><button class="btn small" type="button" data-file="${d.file}">View</button><button class="btn ghost small" type="button" data-dcshare="${d.id}">Share</button><button class="btn danger small" type="button" data-dcdel="${d.id}">Delete</button></div>
+    </div>`).join("")+`</div>`).join("");
+}
+$("dcSearch").addEventListener("input",renderDocs);
+$("dcList").addEventListener("click",async e=>{
+  const ds=e.target.dataset;
+  if(ds.dcshare){ const d=soc.docs.find(x=>x.id===ds.dcshare); const f=await IDB.get(d.file); if(f) shareFile(f.blob,f.name,$("dcMsg"),f.type); }
+  if(ds.dcdel){ if(!e.target.dataset.armed){ e.target.dataset.armed="1"; e.target.textContent="Confirm delete"; return; }
+    const d=soc.docs.find(x=>x.id===ds.dcdel); await IDB.del(d.file).catch(()=>{}); soc.docs=soc.docs.filter(x=>x!==d); persist(); renderDocs(); }
+});
+
+function renderSociety(){
+  exReset(); renderExpenses(); rmReset(); renderReminders(); renderTasks(); renderContacts(); renderDocs(); renderComplaints(); renderReports();
+  const [a,b]=fyRange(todayISO()); if(!$("exRFrom").value){ $("exRFrom").value=a; $("exRTo").value=b; }
+}
+
+/* ================= ONLINE SHARING (Firebase) ================= */
+const CLOUD_KEY="stuti-avenue-cloud";
+const CLOUD={on:false, setup:null, user:null, email:"", roles:null, started:false};
+let ROLE="admin", fdb=null, fauth=null;
+try{ CLOUD.setup=JSON.parse(localStorage.getItem(CLOUD_KEY)||"null"); }catch(e){ CLOUD.setup=null; }
+// invite link: #join=<base64 config>
+(function(){
+  const h=location.hash||""; if(!h.startsWith("#join=")) return;
+  try{ const cfgObj=JSON.parse(decodeURIComponent(escape(atob(h.slice(6))))); if(cfgObj.apiKey&&cfgObj.projectId){ CLOUD.setup={config:cfgObj,setupAdmin:(CLOUD.setup&&CLOUD.setup.setupAdmin)||""}; localStorage.setItem(CLOUD_KEY,JSON.stringify(CLOUD.setup)); } }catch(e){}
+  history.replaceState(null,"",location.pathname);
+})();
+const SDK="https://www.gstatic.com/firebasejs/10.12.2/";
+const loadScript=src=>new Promise((res,rej)=>{ const s=document.createElement("script"); s.src=src; s.onload=res; s.onerror=()=>rej(new Error("Could not load "+src.split("/").pop()+". Check the internet connection.")); document.head.appendChild(s); });
+const stable=o=>JSON.stringify(o,(k,v)=>v&&typeof v==="object"&&!Array.isArray(v)?Object.keys(v).sort().reduce((a,x)=>(a[x]=v[x],a),{}):v);
+const clean=o=>JSON.parse(JSON.stringify(o));
+const lc=s=>String(s||"").trim().toLowerCase();
+
+/* ---------- role display ---------- */
+function setRole(r){
+  ROLE=r; document.body.classList.remove("role-admin","role-entry","role-viewer"); document.body.classList.add("role-"+r);
+  if(r!=="admin") document.querySelectorAll("#memBody input,#memBody select").forEach(e=>e.disabled=true);
+  const sel=document.querySelector("nav.tabs button[aria-selected='true']");
+  if(sel && getComputedStyle(sel).display==="none") goTab(r==="viewer"?"reports":"history");
+  renderAlerts();
+}
+const _renderMembers=renderMembers;
+renderMembers=function(){ _renderMembers(); if(ROLE!=="admin") document.querySelectorAll("#memBody input,#memBody select").forEach(e=>e.disabled=true); };
+function myMember(){ return members.find(m=>lc(m.email)===CLOUD.email); }
+
+/* ---------- gate (sign-in / not registered) ---------- */
+function gate(title,text,btns){
+  $("gate").hidden=false; $("gTitle").textContent=title; $("gText").innerHTML=text; $("gMsg").textContent="";
+  $("gBtns").innerHTML=(btns||[]).map((b,i)=>`<button class="btn ${b.ghost?"ghost":""}" type="button" data-g="${i}">${b.label}</button>`).join("");
+  $("gBtns").onclick=e=>{ const i=e.target.dataset.g; if(i!==undefined) btns[Number(i)].fn(); };
+}
+const ungate=()=>{ $("gate").hidden=true; };
+function signIn(){
+  const p=new firebase.auth.GoogleAuthProvider(); p.setCustomParameters({prompt:"select_account"});
+  fauth.signInWithPopup(p).catch(err=>{
+    if(["auth/popup-blocked","auth/operation-not-supported-in-this-environment","auth/cancelled-popup-request"].includes(err.code)) return fauth.signInWithRedirect(p);
+    if(err.code==="auth/unauthorized-domain"){ $("gMsg").textContent=`This web address (${location.hostname}) is not allowed yet. In Firebase: Authentication → Settings → Authorized domains → Add domain → ${location.hostname}.`; return; }
+    if(err.code!=="auth/popup-closed-by-user") $("gMsg").textContent="Sign-in failed: "+err.message;
+  });
+}
+function signOut(){ fauth.signOut().then(()=>location.reload()); }
+
+/* ---------- start ---------- */
+async function startCloud(){
+  CLOUD.on=true; document.body.classList.add("cloud"); $("banner").hidden=true;
+  gate("Connecting…","Loading the society's shared records.",[]);
+  try{ await loadScript(SDK+"firebase-app-compat.js"); await loadScript(SDK+"firebase-auth-compat.js"); await loadScript(SDK+"firebase-firestore-compat.js"); }
+  catch(err){ gate("No connection",esc(err.message),[{label:"Try again",fn:()=>location.reload()}]); return; }
+  firebase.initializeApp(CLOUD.setup.config);
+  fdb=firebase.firestore(); try{ await fdb.enablePersistence({synchronizeTabs:true}); }catch(e){}
+  fauth=firebase.auth(); fauth.getRedirectResult().catch(err=>{ $("gMsg").textContent="Sign-in failed: "+err.message; });
+  fauth.onAuthStateChanged(u=>{
+    CLOUD.user=u; CLOUD.email=u?lc(u.email):"";
+    if(!u){ gate("Sign in",`Sign in with the Gmail address registered for your flat in <b>${esc(cfg.name)}</b>.`,[{label:"Sign in with Google",fn:signIn}]); return; }
+    $("acct").hidden=false; $("acct").innerHTML=`Signed in as <b>${esc(u.email)}</b> · <span id="acRole"></span> · <button type="button" class="linkbtn" id="acOut">Sign out</button>`;
+    $("acOut").onclick=signOut; watchRoles();
+  });
+}
+let rolesUnsub=null;
+function watchRoles(){
+  if(rolesUnsub) rolesUnsub();
+  rolesUnsub=fdb.doc("meta/roles").onSnapshot(s=>{
+    if(!s.exists){
+      if(CLOUD.email && CLOUD.email===lc(CLOUD.setup.setupAdmin)){
+        fdb.doc("meta/roles").set({admin:CLOUD.email,entry:[],viewers:[],extra:[]}).catch(err=>gate("Publish the security rules first",
+          `Firebase refused to save. Open Firebase → Firestore Database → Rules, paste the rules copied from this app (they must contain <b>${esc(CLOUD.email)}</b>) and press Publish. Then tap Try again.<br><span class="muted">${esc(err.message)}</span>`,
+          [{label:"Copy security rules",fn:()=>copyText(rulesText(CLOUD.email),$("gMsg"),"Rules copied.")},{label:"Try again",fn:()=>location.reload()},{label:"Sign out",ghost:true,fn:signOut}]));
+      } else notRegistered("The society's online records are not set up yet. Ask the secretary for the invite link.");
+      return;
+    }
+    const r=s.data(); CLOUD.roles=r;
+    const role= CLOUD.email===lc(r.admin)?"admin" : (r.entry||[]).map(lc).includes(CLOUD.email)?"entry" : (r.viewers||[]).map(lc).includes(CLOUD.email)?"viewer" : null;
+    if(!role){ notRegistered(); return; }
+    setRole(role); $("acRole").textContent=role==="admin"?"Admin (can edit)":role==="entry"?"Data entry":"Member (view only)";
+    ungate(); startListeners(); renderOnline();
+  }, err=>notRegistered());
+}
+function notRegistered(extra){
+  gate("Not registered",`${extra?esc(extra)+"<br><br>":""}<b>${esc(CLOUD.user?.email||"")}</b> is not on the society's list. Ask the secretary to add this Gmail to your flat in the member register, then sign in again.`,
+    [{label:"Try again",fn:()=>location.reload()},{label:"Use another Gmail",ghost:true,fn:signOut}]);
+}
+
+/* ---------- collections <-> memory ---------- */
+const COLS={
+  members:{get:()=>members,set:v=>{members=v;}},
+  receipts:{get:()=>receipts,set:v=>{receipts=v;}},
+  expenses:{get:()=>soc.expenses,set:v=>{soc.expenses=v;}},
+  tasks:{get:()=>soc.tasks,set:v=>{soc.tasks=v;}},
+  contacts:{get:()=>soc.contacts,set:v=>{soc.contacts=v;}},
+  docs:{get:()=>soc.docs,set:v=>{soc.docs=v;}},
+  reminders:{get:()=>soc.reminders,set:v=>{soc.reminders=v;}},
+  complaints:{get:()=>soc.complaints,set:v=>{soc.complaints=v;}},
+};
+const BASE={}, LAST={}; let loaded=new Set();
+const pending=new Set(); let rafId=0;
+function schedule(what){ pending.add(what); if(rafId) return; rafId=requestAnimationFrame(()=>{ rafId=0; const p=new Set(pending); pending.clear(); rerender(p); }); }
+function rerender(p){
+  if(p.has("config")) applyCfg();
+  if(p.has("members")){ if(!draftMembers) renderMembers(); fillMemberSelect(); renderHistory(); fillWho(); }
+  if(p.has("receipts")){ renderHistory(); update(); }
+  if(p.has("heads")||p.has("expenses")) renderExpenses();
+  if(p.has("reminders")) renderReminders();
+  if(p.has("tasks")||p.has("members")||p.has("contacts")) renderTasks();
+  if(p.has("contacts")) renderContacts();
+  if(p.has("docs")) renderDocs();
+  if(p.has("complaints")||p.has("members")) renderComplaints();
+  renderReports(); renderAlerts(); maybeOfferMigration();
+}
+function startListeners(){
+  if(CLOUD.started) return; CLOUD.started=true;
+  for(const col of Object.keys(COLS)){
+    fdb.collection(col).onSnapshot(s=>{
+      const arr=s.docs.map(d=>({...d.data(),id:d.id})); LAST[col]=arr;
+      BASE[col]=Object.fromEntries(arr.map(x=>[x.id,stable(clean(x))]));
+      COLS[col].set(arr.map(x=>clean(x))); loaded.add(col); schedule(col);
+    }, err=>cloudError(err,col));
+  }
+  fdb.doc("config/society").onSnapshot(s=>{ if(s.exists){ cfg={...DEFAULT_CFG,...s.data()}; } BASE.config=s.exists?stable(clean(cfg)):""; loaded.add("config"); schedule("config"); }, err=>cloudError(err,"config"));
+  fdb.doc("config/heads").onSnapshot(s=>{ if(s.exists&&Array.isArray(s.data().list)) soc.heads=s.data().list; BASE.heads=s.exists?stable(soc.heads):""; schedule("heads"); }, err=>cloudError(err,"heads"));
+}
+function cloudError(err,col,item){
+  const code=err&&err.code;
+  const t= code==="exists"?`Receipt no. ${item?.seq} was just used by another entry person. Open New receipt and save it again with the next number.`
+    : code==="permission-denied"?"You don't have permission for that. Only the admin can change or delete saved entries."
+    : code==="unavailable"?"No internet. Your entry is saved on this phone and will be sent when you are back online."
+    : (err&&err.message)||String(err);
+  const b=$("cloudbar"); b.hidden=false; b.className="banner errbar"; b.innerHTML=`${esc(t)} <button class="btn small ghost" type="button" onclick="this.parentNode.hidden=true">OK</button>`;
+  if(col && LAST[col] && code!=="unavailable"){ COLS[col].set(LAST[col].map(x=>clean(x))); BASE[col]=Object.fromEntries(LAST[col].map(x=>[x.id,stable(clean(x))])); schedule(col); }
+}
+async function createDoc(col,id,data){
+  const ref=fdb.collection(col).doc(id);
+  await fdb.runTransaction(async t=>{ const s=await t.get(ref); if(s.exists) throw {code:"exists"}; t.set(ref,data); });
+}
+function cloudSync(){
+  for(const col of Object.keys(COLS)){
+    if(!loaded.has(col)) continue;
+    const cur=COLS[col].get(), b=BASE[col]||(BASE[col]={}), seen=new Set();
+    for(const item of cur){
+      if(!item.id) item.id=col==="receipts"?"r"+pad(item.seq,5):uid(col.slice(0,2));
+      seen.add(item.id); const data=clean(item), js=stable(data);
+      if(b[item.id]===js) continue;
+      const isNew=!(item.id in b); b[item.id]=js;
+      const p = isNew&&col==="receipts" ? createDoc(col,item.id,data) : fdb.collection(col).doc(item.id).set(data);
+      p.catch(err=>{ delete b[item.id]; cloudError(err,col,item); });
+    }
+    for(const id of Object.keys(b)) if(!seen.has(id)){ delete b[id]; fdb.collection(col).doc(id).delete().catch(err=>cloudError(err,col)); }
+  }
+  if(ROLE==="admin"){
+    const c=stable(clean(cfg)); if(loaded.has("config") && c!==BASE.config){ BASE.config=c; fdb.doc("config/society").set(clean(cfg)).catch(err=>cloudError(err,"config")); }
+    const h=stable(soc.heads); if(h!==BASE.heads){ BASE.heads=h; fdb.doc("config/heads").set({list:soc.heads}).catch(err=>cloudError(err,"heads")); }
+    syncViewers();
+  }
+}
+function syncViewers(){
+  const r=CLOUD.roles; if(!r||ROLE!=="admin"||!loaded.has("members")) return;
+  const v=[...new Set([...members.map(m=>lc(m.email)),...(r.extra||[]).map(lc)].filter(Boolean))].sort();
+  if(stable(v)!==stable([...(r.viewers||[])].sort())) fdb.doc("meta/roles").set({...r,viewers:v}).catch(err=>cloudError(err));
+}
+function persist(){ if(CLOUD.on){ if(CLOUD.started) cloudSync(); } else persistLocal(); }
+
+/* ---------- files in Firestore (chunks, free plan) ---------- */
+const CHUNK=700000;
+async function cloudPutFile(f){
+  const data=await blobToDataURL(f.blob), parts=Math.ceil(data.length/CHUNK), ref=fdb.collection("files").doc(f.id);
+  for(let i=0;i<parts;i++) await ref.collection("chunks").doc(String(i)).set({d:data.slice(i*CHUNK,(i+1)*CHUNK)});
+  await ref.set({name:f.name,type:f.type,size:f.size,parts,addedAt:f.addedAt||new Date().toISOString(),by:CLOUD.email});
+}
+async function cloudGetFile(id){
+  const ref=fdb.collection("files").doc(id); const m=await ref.get(); if(!m.exists) return null; const d=m.data();
+  let data=""; for(let i=0;i<d.parts;i++){ const c=await ref.collection("chunks").doc(String(i)).get(); data+=c.exists?c.data().d:""; }
+  const blob=await (await fetch(data)).blob(); return {id,name:d.name,type:d.type,size:blob.size,blob,addedAt:d.addedAt};
+}
+async function cloudDelFile(id){
+  const ref=fdb.collection("files").doc(id); const m=await ref.get().catch(()=>null);
+  const parts=m&&m.exists?m.data().parts:0; for(let i=0;i<parts;i++) await ref.collection("chunks").doc(String(i)).delete();
+  await ref.delete();
+}
+async function cloudFileIds(){ const s=await fdb.collection("files").get(); return s.docs.map(d=>d.id); }
+
+/* ---------- move this phone's data online (admin, once) ---------- */
+let migOffered=false;
+function maybeOfferMigration(){
+  if(migOffered||ROLE!=="admin"||!loaded.has("members")||!loaded.has("receipts")||members.length) return;
+  const local=readJSON(KEY); if(!local||!(local.members||[]).length) return;
+  migOffered=true;
+  const b=$("cloudbar"); b.hidden=false; b.className="banner";
+  b.innerHTML=`The online database is empty. Upload this phone's records (${local.members.length} flats, ${(local.receipts||[]).length} receipts, ${((local.soc||{}).expenses||[]).length} expenses, ${((local.soc||{}).docs||[]).length} documents)? <div class="links" style="margin-top:6px"><button class="btn small" type="button" id="migGo">Upload now</button></div>`;
+  $("migGo").onclick=async()=>{
+    b.textContent="Uploading… keep the app open.";
+    try{
+      const files=await LOCALDB.all(); for(const f of files) await cloudPutFile(f);
+      cfg={...DEFAULT_CFG,...(local.config||{})}; members=local.members; receipts=(local.receipts||[]).map(r=>({...r,id:r.id||"r"+pad(r.seq,5)}));
+      soc=normSoc(local.soc); loaded=new Set([...Object.keys(COLS),"config"]);
+      for(const col of Object.keys(COLS)){ for(const it of COLS[col].get()){ const ref=fdb.collection(col).doc(it.id||(it.id=uid(col.slice(0,2)))); await ref.set(clean(it)); } }
+      await fdb.doc("config/society").set(clean(cfg)); await fdb.doc("config/heads").set({list:soc.heads}); syncViewers();
+      b.className="banner"; b.textContent=`Done. ${members.length} flats, ${receipts.length} receipts and ${files.length} files are now online.`;
+    }catch(err){ b.className="banner errbar"; b.textContent="Upload stopped: "+(err.message||err)+". Tap Sign out, sign in again and retry."; migOffered=false; }
+  };
+}
+
+/* ---------- setup + access panel (Settings) ---------- */
+function rulesText(admin){
+  const A=lc(admin).replace(/'/g,"");
+  const std=c=>`    match /${c}/{id} { allow read: if canRead(); allow create: if canAdd(); allow update, delete: if isAdmin(); }`;
+  return `rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null && request.auth.token.email_verified == true; }
+    function email() { return request.auth.token.email.lower(); }
+    function isAdmin() { return signedIn() && email() == '${A}'; }
+    function rolesPath() { return /databases/$(database)/documents/meta/roles; }
+    function isEntry() { return signedIn() && exists(rolesPath()) && email() in get(rolesPath()).data.entry; }
+    function isViewer() { return signedIn() && exists(rolesPath()) && email() in get(rolesPath()).data.viewers; }
+    function canRead() { return isAdmin() || isEntry() || isViewer(); }
+    function canAdd() { return isAdmin() || isEntry(); }
+    function onlyKeys(k) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(k); }
+
+    match /meta/roles { allow read: if isAdmin() || (signedIn() && (email() in resource.data.entry || email() in resource.data.viewers)); allow write: if isAdmin(); }
+    match /config/{id} { allow read: if canRead(); allow write: if isAdmin(); }
+    match /members/{id} { allow read: if canRead(); allow write: if isAdmin(); }
+${["receipts","expenses","contacts","docs"].map(std).join("\n")}
+    match /files/{id} { allow read: if canRead(); allow create: if canAdd(); allow update, delete: if isAdmin();
+      match /chunks/{n} { allow read: if canRead(); allow create: if canAdd(); allow update, delete: if isAdmin(); } }
+    match /reminders/{id} { allow read: if canRead(); allow create: if canAdd(); allow update: if isAdmin() || (isEntry() && onlyKeys(['due','lastDone'])); allow delete: if isAdmin(); }
+    match /tasks/{id} { allow read: if canRead(); allow create: if canAdd(); allow update: if isAdmin() || (isEntry() && onlyKeys(['done','doneAt'])); allow delete: if isAdmin(); }
+    match /complaints/{id} { allow read: if canRead();
+      allow create: if canRead() && request.resource.data.by == email() && request.resource.data.status == 'Open';
+      allow update: if isAdmin() || (isEntry() && onlyKeys(['status','reply','repliedBy','updatedAt']));
+      allow delete: if isAdmin(); }
+  }
+}`;
+}
+async function copyText(t,msgEl,ok){
+  try{ await navigator.clipboard.writeText(t); msgEl.className="msg ok"; msgEl.textContent=ok; }
+  catch(e){ const ta=$("olRulesTxt"); ta.hidden=false; ta.value=t; ta.focus(); ta.select(); msgEl.className="msg"; msgEl.textContent="Copy the selected text below (long-press → Copy)."; }
+}
+function parseFbConfig(t){
+  const o={}; for(const k of ["apiKey","authDomain","projectId","storageBucket","messagingSenderId","appId"]){ const m=t.match(new RegExp(k+`["']?\\s*:\\s*["']([^"']+)["']`)); if(m) o[k]=m[1].trim(); }
+  if(!o.apiKey||!o.projectId||!o.appId) return null; if(!o.authDomain) o.authDomain=o.projectId+".firebaseapp.com"; return o;
+}
+function inviteLink(){ const c=CLOUD.setup.config; return location.origin+location.pathname+"#join="+btoa(unescape(encodeURIComponent(JSON.stringify(c)))); }
+function renderOnline(){
+  $("olLocal").hidden=CLOUD.on; $("olCloud").hidden=!CLOUD.on;
+  if(!CLOUD.on){ if(!$("olAdmin").value) $("olAdmin").value=""; return; }
+  const r=CLOUD.roles||{}; $("olWho").innerHTML=`Admin (the only person who can edit or delete): <b>${esc(r.admin||"")}</b>`;
+  if(document.activeElement?.closest?.("#olCloud")) return;
+  [0,1,2].forEach(i=>$("olE"+(i+1)).value=(r.entry||[])[i]||""); $("olX").value=(r.extra||[]).join("\n");
+  const noMail=members.filter(m=>!m.email).map(m=>m.flatNo);
+  $("olViewers").innerHTML=`Members who can view: <b>${(r.viewers||[]).length}</b> Gmail addresses (taken from the email column in Members, plus extra viewers).${noMail.length?` <span style="color:var(--danger)">No email yet for: ${esc(noMail.join(", "))}.</span>`:""}`;
+}
+$("olRules").addEventListener("click",()=>{ const a=$("olAdmin").value.trim(); if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a)){ setMsg($("olMsg"),"err","Enter the admin's Gmail first."); return; } copyText(rulesText(a),$("olMsg"),"Security rules copied. Paste them in Firebase → Firestore Database → Rules → Publish."); });
+$("olRules2").addEventListener("click",()=>copyText(rulesText(CLOUD.roles?.admin||CLOUD.email),$("olMsg2"),"Security rules copied."));
+$("olConnect").addEventListener("click",()=>{
+  const a=lc($("olAdmin").value), c=parseFbConfig($("olCfg").value);
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a)){ setMsg($("olMsg"),"err","Enter the admin's Gmail."); return; }
+  if(!c){ setMsg($("olMsg"),"err","That doesn't look like the firebaseConfig. Copy the whole block that starts with const firebaseConfig = { from Firebase → Project settings → Your apps."); return; }
+  localStorage.setItem(CLOUD_KEY,JSON.stringify({config:c,setupAdmin:a})); location.reload();
+});
+$("olSave").addEventListener("click",()=>{
+  const entry=[$("olE1").value,$("olE2").value,$("olE3").value].map(lc).filter(Boolean);
+  const bad=entry.find(e=>!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)); if(bad){ setMsg($("olMsg2"),"err",`"${bad}" is not a valid email.`); return; }
+  const extra=$("olX").value.split(/[\n,]/).map(lc).filter(Boolean);
+  const r={...CLOUD.roles,entry,extra}; CLOUD.roles=r; fdb.doc("meta/roles").set(r).then(()=>{ syncViewers(); setMsg($("olMsg2"),"ok","Access saved."); }).catch(err=>setMsg($("olMsg2"),"err",err.message));
+});
+$("olInvite").addEventListener("click",async()=>{
+  const t=`${cfg.name}\nOpen this link on your phone, sign in with the Gmail registered for your flat, then tap ⋮ → Add to Home screen:\n${inviteLink()}`;
+  if(navigator.share){ try{ await navigator.share({text:t}); }catch(e){} } else location.href="https://wa.me/?text="+encodeURIComponent(t);
+});
+$("olCopy").addEventListener("click",()=>copyText(inviteLink(),$("olMsg2"),"Invite link copied."));
+$("olOff").addEventListener("click",()=>{ localStorage.removeItem(CLOUD_KEY); location.reload(); });
+
+/* ---------- COMPLAINTS ---------- */
+function fillCpFlat(){
+  const sel=$("cpFlat"), k=sel.value;
+  if(CLOUD.on && ROLE==="viewer"){ const m=myMember(); sel.innerHTML=m?`<option value="${esc(m.id)}">${esc(memberLabel(m))}</option>`:`<option value="">Your flat</option>`; sel.disabled=true; return; }
+  sel.disabled=false; sel.innerHTML=`<option value="">Common / society</option>`+[...members].sort(flatSort).map(m=>`<option value="${esc(m.id)}">${esc(memberLabel(m))}</option>`).join(""); sel.value=k;
+}
+$("cpForm").addEventListener("submit",e=>{
+  e.preventDefault(); const text=$("cpText").value.trim(); if(!text){ setMsg($("cpMsg"),"err","Write the complaint or suggestion."); return; }
+  const m=members.find(x=>x.id===$("cpFlat").value)||(ROLE==="viewer"?myMember():null);
+  const c={id:uid("cp"),at:new Date().toISOString(),kind:$("cpKind").value,cat:$("cpCat").value,text,flatNo:m?.flatNo||"",name:m?.name||(CLOUD.user?.displayName||""),by:CLOUD.on?CLOUD.email:"",status:"Open",reply:"",repliedBy:"",updatedAt:""};
+  soc.complaints.push(c); persist(); $("cpText").value="";
+  setMsg($("cpMsg"),"ok",`${c.kind} posted. The committee can see it now.`);
+  const t=`*${cfg.name}*\n${c.kind}: ${c.cat}\n${c.text}\n— ${c.flatNo?"Flat "+c.flatNo:""} ${c.name}`.trim();
+  $("cpShare").hidden=false; $("cpShare").innerHTML=`<p>Also tell the society WhatsApp group?</p><div class="links"><a class="btn wa small" href="https://wa.me/?text=${encodeURIComponent(t)}" target="_blank" rel="noopener">Share on WhatsApp</a></div>`;
+  renderComplaints();
+});
+document.querySelectorAll('input[name="cpF"]').forEach(r=>r.addEventListener("change",renderComplaints));
+function renderComplaints(){
+  fillCpFlat();
+  const f=document.querySelector('input[name="cpF"]:checked').value, all=soc.complaints||[];
+  const list=all.filter(c=>f==="all"||(f==="open"?c.status!=="Resolved":c.status==="Resolved")).sort((a,b)=>b.at.localeCompare(a.at));
+  $("cpStats").innerHTML=`<span>Open <b>${all.filter(c=>c.status==="Open").length}</b></span><span>In progress <b>${all.filter(c=>c.status==="In progress").length}</b></span><span>Resolved <b>${all.filter(c=>c.status==="Resolved").length}</b></span>`;
+  $("cpList").innerHTML=list.length?list.map(c=>{ const st=c.status==="Resolved"?"ok":c.status==="In progress"?"warn":"bad"; const d=new Date(c.at);
+    return `<div class="card"><div class="crow"><div><div class="eyebrow">${esc(c.kind||"Complaint")} · ${esc(c.cat)}</div></div><span class="pill st-${st}">${esc(c.status)}</span></div>
+    <div style="white-space:pre-wrap">${esc(c.text)}</div>
+    <div class="muted">${esc([c.flatNo?"Flat "+c.flatNo:"",c.name].filter(Boolean).join(" · "))} · ${d.toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"})}</div>
+    ${c.reply?`<div class="reply"><b>Committee:</b> ${esc(c.reply)}${c.repliedBy?` <span class="muted">— ${esc(c.repliedBy)}</span>`:""}</div>`:""}
+    <div class="cpManage"><select data-cpst="${c.id}" aria-label="Status"><option${c.status==="Open"?" selected":""}>Open</option><option${c.status==="In progress"?" selected":""}>In progress</option><option${c.status==="Resolved"?" selected":""}>Resolved</option></select>
+      <input data-cprep="${c.id}" placeholder="Reply to member" value="${esc(c.reply||"")}"><button class="btn small" type="button" data-cpsave="${c.id}">Update</button><button class="btn danger small" type="button" data-cpdel="${c.id}">Delete</button></div>
+    </div>`; }).join(""):`<div class="empty">${f==="open"?"No open complaints.":"Nothing here yet."}</div>`;
+}
+$("cpList").addEventListener("click",e=>{
+  const ds=e.target.dataset;
+  if(ds.cpsave){ const c=soc.complaints.find(x=>x.id===ds.cpsave); c.status=document.querySelector(`[data-cpst="${ds.cpsave}"]`).value; c.reply=document.querySelector(`[data-cprep="${ds.cpsave}"]`).value.trim();
+    c.repliedBy=CLOUD.on?(CLOUD.user?.displayName||CLOUD.email):"Committee"; c.updatedAt=new Date().toISOString(); persist(); renderComplaints(); renderAlerts(); }
+  if(ds.cpdel){ if(!e.target.dataset.armed){ e.target.dataset.armed="1"; e.target.textContent="Confirm delete"; return; } soc.complaints=soc.complaints.filter(x=>x.id!==ds.cpdel); persist(); renderComplaints(); }
+});
+
+/* ---------- REPORTS: one-click audit report ---------- */
+const INCOME_LABELS={maint:"Maintenance",repair:"Repair fund",sinking:"Sinking fund",parking:"Parking charges",nonocc:"Non-occupancy charges",sharetx:"Share transfer fee",entry:"Entry fee",flattx:"Flat transfer fee",penalty:"Late payment penalty",other:"Other income"};
+const fyBounds=fy=>{ const s=Number(fy.slice(0,4)); return [`${s}-04-01`,`${s+1}-03-31`]; };
+function fyList(){ const set=new Set([fyOf(todayISO())]); receipts.forEach(r=>r.date&&set.add(fyOf(r.date))); soc.expenses.forEach(x=>x.date&&set.add(fyOf(x.date))); return [...set].sort().reverse(); }
+function auditNumbers(fy){
+  const [from,to]=fyBounds(fy), inR=d=>d>=from&&d<=to;
+  const rc=receipts.filter(r=>inR(r.date||"")), ex=soc.expenses.filter(x=>inR(x.date||""));
+  const income={}; rc.forEach(r=>itemsOf(r).forEach(i=>{ const k=INCOME_LABELS[i.k]?i.k:"other"; income[k]=(income[k]||0)+i.amount; }));
+  const spend={}; ex.forEach(x=>{ const h=exHeadText(x).replace(/^Other: .*/,"Other"); spend[h]=(spend[h]||0)+x.amount; });
+  const tIn=rc.reduce((s,r)=>s+(Number(r.amount)||0),0), tOut=ex.reduce((s,x)=>s+x.amount,0), open=Number((cfg.openBal||{})[fy])||0;
+  return {from,to,rc,ex,income,spend,tIn,tOut,open,close:open+tIn-tOut};
+}
+function renderReports(){
+  const sel=$("auFY"), k=sel.value, fys=fyList();
+  sel.innerHTML=fys.map(f=>`<option value="${f}">${f} (Apr ${f.slice(0,4)} – Mar ${Number(f.slice(0,4))+1})</option>`).join(""); sel.value=fys.includes(k)?k:fys[0];
+  const n=auditNumbers(sel.value);
+  if(document.activeElement!==$("auOpen")) $("auOpen").value=n.open||"";
+  $("auOpen").disabled=ROLE!=="admin";
+  $("auStats").innerHTML=`<span>Collected <b>Rs. ${inr(n.tIn)}</b></span><span>Spent <b>Rs. ${inr(n.tOut)}</b></span><span>Closing balance <b>Rs. ${inr(n.close)}</b></span><span>Receipts <b>${n.rc.length}</b></span><span>Vouchers <b>${n.ex.length}</b></span>`;
+}
+$("auFY").addEventListener("change",renderReports);
+$("auOpen").addEventListener("change",()=>{ if(ROLE!=="admin") return; cfg.openBal={...(cfg.openBal||{}),[$("auFY").value]:Math.round(Number($("auOpen").value)||0)}; persist(); renderReports(); setMsg($("auMsg"),"ok","Opening balance saved."); });
+
+async function buildAudit(fy,withPhotos){
+  const { jsPDF } = window.jspdf; const doc=new jsPDF({unit:"mm",format:"a4"}); const W=210,H=297,M=12;
+  const n=auditNumbers(fy), {from,to,rc,ex}=n;
+  const head=(title="AUDIT REPORT")=>{
+    doc.setFont("helvetica","bold"); doc.setFontSize(11.5); doc.setTextColor(24,33,58); doc.text(cfg.name,M,13,{maxWidth:W-2*M-60});
+    doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(93,104,134); doc.text([cfg.reg?"Reg. No. "+cfg.reg:"",cfg.address].filter(Boolean).join("  |  "),M,18.5,{maxWidth:W-2*M-60});
+    doc.setFont("helvetica","bold"); doc.setFontSize(9.5); doc.setTextColor(35,64,168); doc.text(title,W-M,13,{align:"right"});
+    doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(93,104,134); doc.text(`F.Y. ${fy}  (${fmtDate(from)} – ${fmtDate(to)})`,W-M,18.5,{align:"right"});
+    doc.setDrawColor(213,219,231); doc.setLineWidth(0.3); doc.line(M,22,W-M,22); return 28;
+  };
+  const section=(y,t,title)=>{ if(y>H-45){ doc.addPage(); y=head(title); } doc.setFont("helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(24,33,58); doc.text(t,M,y); return y+3; };
+  const T=(y,cols,rows,title)=>pdfTable(doc,{y,M,W,H,head:()=>head(title),cols,rows});
+  const tot=a=>({bold:true,fill:[223,242,232],cells:a});
+
+  // ---- page 1: cover + income & expenditure ----
+  let y=head();
+  doc.setFont("helvetica","bold"); doc.setFontSize(17); doc.setTextColor(24,33,58); doc.text("Accounts & Audit Report",M,y+6);
+  doc.setFont("helvetica","normal"); doc.setFontSize(10); doc.setTextColor(93,104,134);
+  doc.text(`Financial year ${fy}  ·  ${members.length} flats  ·  Prepared ${new Date().toLocaleDateString("en-IN",{dateStyle:"medium"})}${CLOUD.on&&CLOUD.email?"  ·  by "+CLOUD.email:""}`,M,y+12,{maxWidth:W-2*M});
+  y+=20;
+  y=T(y,[{h:"Summary",w:136},{h:"Rs.",w:50,r:1}],[
+    {cells:["Opening balance (cash + bank) on "+fmtDate(from),inr(n.open)]},
+    {cells:[`Add: collected from members (${rc.length} receipts)`,inr(n.tIn)]},
+    {cells:[`Less: expenses paid (${ex.length} vouchers)`,inr(n.tOut)]},
+    tot(["Closing balance on "+fmtDate(to),inr(n.close)]),
+    {cells:[n.tIn>=n.tOut?"Surplus for the year":"Deficit for the year",inr(Math.abs(n.tIn-n.tOut))]}]);
+  y=section(y+7,"Income (collections by type)");
+  const incRows=Object.keys(INCOME_LABELS).filter(k=>n.income[k]).map(k=>({cells:[INCOME_LABELS[k],inr(n.income[k])]}));
+  y=T(y,[{h:"Income head",w:136},{h:"Rs.",w:50,r:1}],[...(incRows.length?incRows:[{cells:["No collections",""]}]),tot(["Total income",inr(n.tIn)])]);
+  y=section(y+7,"Expenditure (by head)");
+  const spRows=Object.keys(n.spend).sort().map(h=>({cells:[h,inr(n.spend[h])]}));
+  y=T(y,[{h:"Expense head",w:136},{h:"Rs.",w:50,r:1}],[...(spRows.length?spRows:[{cells:["No expenses",""]}]),tot(["Total expenditure",inr(n.tOut)])]);
+  y=section(y+7,"Payment modes");
+  const mode=(arr,m)=>arr.filter(x=>x.method===m).reduce((s,x)=>s+(Number(x.amount)||0),0), cnt=(arr,m)=>arr.filter(x=>x.method===m).length;
+  y=T(y,[{h:"Mode",w:46},{h:"Received (count)",w:30,r:1},{h:"Received Rs.",w:40,r:1},{h:"Paid (count)",w:30,r:1},{h:"Paid Rs.",w:40,r:1}],
+    ["Cash","Online","Cheque"].map(m=>({cells:[m,cnt(rc,m),inr(mode(rc,m)),cnt(ex,m),inr(mode(ex,m))]})));
+
+  // ---- month-wise receipts & payments ----
+  doc.addPage(); y=head("RECEIPTS & PAYMENTS"); y=section(y,"Month-wise receipts and payments");
+  let bal=n.open; const mrows=[];
+  for(let i=0;i<12;i++){ const d=new Date(Number(fy.slice(0,4)),3+i,1), key=isoOf(d).slice(0,7);
+    const a=rc.filter(r=>r.date.slice(0,7)===key).reduce((s,r)=>s+(Number(r.amount)||0),0), b=ex.filter(x=>x.date.slice(0,7)===key).reduce((s,x)=>s+x.amount,0); bal+=a-b;
+    mrows.push({cells:[`${MONTHS[d.getMonth()]} ${d.getFullYear()}`,inr(a),inr(b),inr(a-b),inr(bal)]}); }
+  y=T(y,[{h:"Month",w:40},{h:"Collected",w:36,r:1},{h:"Spent",w:36,r:1},{h:"Net",w:34,r:1},{h:"Balance",w:40,r:1}],[{cells:["Opening","","","",inr(n.open)]},...mrows,tot(["Total",inr(n.tIn),inr(n.tOut),inr(n.tIn-n.tOut),inr(n.close)])],"RECEIPTS & PAYMENTS");
+
+  // ---- maintenance dues ----
+  const pers=periods().filter(p=>{ const s=isoOf(p.start); return s>=from&&s<=to&&s<=todayISO(); });
+  y=section(y+8,"Maintenance collection status","MAINTENANCE DUES");
+  if(!pers.length){ doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.text("No maintenance period has started yet in this year.",M,y+4); y+=8; }
+  else{
+    const pw=Math.floor(96/pers.length); let outstanding=0;
+    const drows=[...members].sort(flatSort).map(m=>{ let due=0; const cells=pers.map(p=>{ const r=receipts.find(r=>r.memberId===m.id&&r.inclMaint!==false&&r.periodKey===p.key); if(r) return "Paid #"+r.receiptNo; due+=rateFor(m.occ)*6; return "DUE "+inr(rateFor(m.occ)*6); }); outstanding+=due;
+      return {cells:[m.flatNo,m.name||"-",m.occ==="rented"?"Rented":"Self",...cells,due?inr(due):"-"],fill:due?[253,240,238]:null}; });
+    y=T(y,[{h:"Flat",w:16},{h:"Member",w:42},{h:"Type",w:14},...pers.map(p=>({h:p.label.replace(/ 20(\d\d)/g," $1"),w:pw})),{h:"Outstanding",w:186-72-pw*pers.length,r:1}],[...drows,tot(["","Total outstanding","",...pers.map(()=>""),inr(outstanding)])],"MAINTENANCE DUES");
+  }
+
+  // ---- member ledger ----
+  doc.addPage(); y=head("MEMBER LEDGER"); y=section(y,"Member-wise collections");
+  const lrows=[...members].sort(flatSort).map(m=>{ const rs=rc.filter(r=>r.memberId===m.id); let ma=0,ot=0,pe=0; rs.forEach(r=>itemsOf(r).forEach(i=>{ if(i.k==="maint") ma+=i.amount; else if(i.k==="penalty") pe+=i.amount; else ot+=i.amount; }));
+    return {cells:[m.flatNo,m.name||"-",m.occ==="rented"?"Rented":"Self",rs.length||"-",ma?inr(ma):"-",ot?inr(ot):"-",pe?inr(pe):"-",inr(ma+ot+pe)]}; });
+  y=T(y,[{h:"Flat",w:16},{h:"Member",w:50},{h:"Type",w:15},{h:"Rcpts",w:13,r:1},{h:"Maint.",w:24,r:1},{h:"Other",w:22,r:1},{h:"Penalty",w:20,r:1},{h:"Total",w:26,r:1}],[...lrows,tot(["","TOTAL","",rc.length,"","","",inr(n.tIn)])],"MEMBER LEDGER");
+
+  // ---- receipt register ----
+  doc.addPage(); y=head("RECEIPT REGISTER"); y=section(y,"Receipt register");
+  const rrows=[...rc].sort((a,b)=>a.date.localeCompare(b.date)||(a.seq-b.seq)).map(r=>({cells:[fmtDate(r.date),r.receiptNo,r.flatNo,r.name,itemsOf(r).map(i=>shortItem(i.label)).join(", "),r.method+(r.chqNo?" "+r.chqNo:""),inr(r.amount)]}));
+  y=T(y,[{h:"Date",w:18},{h:"No.",w:14},{h:"Flat",w:15},{h:"Name",w:36},{h:"Particulars",w:55},{h:"Mode",w:27},{h:"Amount",w:21,r:1}],[...(rrows.length?rrows:[{cells:["","","","No receipts","","",""]}]),tot(["","","","TOTAL","","",inr(n.tIn)])],"RECEIPT REGISTER");
+
+  // ---- expense register ----
+  doc.addPage(); y=head("EXPENSE REGISTER"); y=section(y,"Expense register");
+  const erows=[...ex].sort((a,b)=>a.date.localeCompare(b.date)||a.seq-b.seq).map(x=>({cells:["V-"+pad(x.seq),fmtDate(x.date),exHeadText(x),x.party||"-",x.bill||"-",x.method+(x.ref?" "+x.ref:""),(x.files||[]).length?"Yes":"No",inr(x.amount)]}));
+  y=T(y,[{h:"Voucher",w:16},{h:"Date",w:18},{h:"Head",w:42},{h:"Paid to",w:32},{h:"Bill no.",w:20},{h:"Mode",w:22},{h:"Bill",w:12},{h:"Amount",w:24,r:1}],[...(erows.length?erows:[{cells:["","","No expenses","","","","",""]}]),tot(["","","TOTAL","","","","",inr(n.tOut)])],"EXPENSE REGISTER");
+
+  // ---- complaints ----
+  const cps=(soc.complaints||[]).filter(c=>(c.at||"").slice(0,10)>=from&&(c.at||"").slice(0,10)<=to);
+  y=section(y+8,"Complaints & suggestions","COMPLAINTS");
+  y=T(y,[{h:"Date",w:20},{h:"Flat",w:16},{h:"Type",w:34},{h:"Details",w:92},{h:"Status",w:24}],
+    cps.length?cps.sort((a,b)=>a.at.localeCompare(b.at)).map(c=>({cells:[fmtDate(c.at.slice(0,10)),c.flatNo||"-",`${c.kind||"Complaint"}: ${c.cat}`,c.text.replace(/\s+/g," "),c.status]})):[{cells:["","","No complaints in this year","",""]}],"COMPLAINTS");
+
+  // ---- signatures ----
+  if(y>H-50){ doc.addPage(); y=head(); }
+  y+=26; doc.setDrawColor(150,160,185); doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(24,33,58);
+  [["Prepared by (Treasurer)",cfg.treasurer],["Checked by (Secretary)",cfg.secretary],["Auditor",""]].forEach(([t,nm],i)=>{ const x=M+i*64; doc.line(x,y,x+56,y); doc.text(t,x,y+5); if(nm) doc.text(nm,x,y+10); });
+
+  // ---- bill photos ----
+  if(withPhotos){ for(const x of ex){ for(const id of (x.files||[])){ const f=await IDB.get(id); if(!f||!f.type.startsWith("image/")) continue;
+    doc.addPage(); let py=head("BILL ATTACHMENT"); doc.setFont("helvetica","bold"); doc.setFontSize(9.5); doc.setTextColor(24,33,58);
+    doc.text(`V-${pad(x.seq)} · ${fmtDate(x.date)} · ${exHeadText(x)} · ${x.party||""} · Rs. ${inr(x.amount)}`,M,py,{maxWidth:W-2*M}); py+=5;
+    const s=await shrinkImage(f.blob); if(!s) continue; const data=await blobToDataURL(s.blob); const sc=Math.min((W-2*M)/s.w,(H-py-14)/s.h);
+    doc.addImage(data,"JPEG",M+(W-2*M-s.w*sc)/2,py+2,s.w*sc,s.h*sc); } } }
+
+  const pages=doc.getNumberOfPages(), gen=new Date().toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"});
+  for(let i=1;i<=pages;i++){ doc.setPage(i); doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(150,160,185); doc.text(`Generated ${gen}`,M,H-7); doc.text(`Page ${i} of ${pages}`,W-M,H-7,{align:"right"}); }
+  return {blob:doc.output("blob"),n};
+}
+async function auditGo(share){
+  const msg=$("auMsg");
+  if(!window.jspdf){ setMsg(msg,"err","The PDF maker could not load. Connect to the internet once and reload the app."); return; }
+  const fy=$("auFY").value; setMsg(msg,"","Making the audit report…");
+  try{
+    const {blob,n}=await buildAudit(fy,$("auPhotos").checked); const fname=`Stuti Avenue Audit Report ${fy}.pdf`;
+    if(!share){ saveBlob(blob,fname); setMsg(msg,"ok","Audit report downloaded."); return; }
+    const file=new File([blob],fname,{type:"application/pdf"});
+    const text=`*${cfg.name}*\nAccounts & audit report F.Y. ${fy}\nCollected Rs. ${inr(n.tIn)} · Spent Rs. ${inr(n.tOut)} · Balance Rs. ${inr(n.close)}`;
+    if(navigator.canShare&&navigator.canShare({files:[file]})){ try{ await navigator.share({files:[file],text,title:fname}); setMsg(msg,"ok","Choose WhatsApp, then the society group."); }catch(err){ if(err.name!=="AbortError") setMsg(msg,"err","Could not share: "+err.message); else setMsg(msg,"",""); } }
+    else { saveBlob(blob,fname); setMsg(msg,"","This phone can't share files from here, so the PDF was downloaded. Attach it in the WhatsApp group."); }
+  }catch(err){ setMsg(msg,"err","Could not make the report: "+(err.message||err)); }
+}
+$("auDown").addEventListener("click",()=>auditGo(false));
+$("auShare").addEventListener("click",()=>auditGo(true));
+
+
+/* ---------- WhatsApp status message: who has paid ---------- */
+const MONTHS_FULL=["January","February","March","April","May","June","July","August","September","October","November","December"];
+function periodEnd(p){ return isoOf(new Date(p.start.getFullYear(),p.start.getMonth()+6,0)); }
+function periodFull(p){ const e=new Date(p.start.getFullYear(),p.start.getMonth()+5,1); return `${MONTHS_FULL[p.start.getMonth()]} ${p.start.getFullYear()} to ${MONTHS_FULL[e.getMonth()]} ${e.getFullYear()}`; }
+function receiptForPeriod(m,p){
+  const s=isoOf(p.start), e=periodEnd(p);
+  return receipts.filter(r=>r.memberId===m.id && r.inclMaint!==false && ((r.from && r.from>=s && r.from<=e) || (!r.from && r.periodKey===p.key)))
+    .sort((a,b)=>(a.date||"").localeCompare(b.date||""))[0];
+}
+function floorOf(flat){ const n=String(flat).match(/(\d+)/); return n?Math.floor(Number(n[1])/100):0; }
+function buildingOf(flat){ const b=String(flat).match(/^\s*([A-Za-z]+)/); return b?b[1].toUpperCase():""; }
+const ordinal=n=>n===0?"Ground":n+(n%100>=11&&n%100<=13?"th":({1:"st",2:"nd",3:"rd"}[n%10]||"th"));
+function modeWord(r){ if(r.method==="Cash") return "paid cash"; if(r.method==="Cheque") return `cheque${r.chqNo?" "+r.chqNo:""}`; return "online"; }
+function statusMessage(p,withSum){
+  const list=[...members].sort(flatSort), lines=[], paid=[], pending=[]; let total=0;
+  const blds=[...new Set(list.map(m=>buildingOf(m.flatNo)))];
+  const short=(cfg.name||"").replace(/\s*(CO\.?\s*OP\.?.*|Co-op.*)$/i,"").trim()||cfg.name;
+  lines.push(`*${short}${blds.length===1&&blds[0]?" – "+blds[0]+" Building":""}*`, `*Maintenance collection*`, `*${periodFull(p)}*`);
+  let lastKey=null;
+  for(const m of list){
+    const key=buildingOf(m.flatNo)+"|"+floorOf(m.flatNo);
+    if(key!==lastKey){ lines.push("", `*${blds.length>1?buildingOf(m.flatNo)+" Bldg – ":""}${ordinal(floorOf(m.flatNo))} floor*`); lastKey=key; }
+    const r=receiptForPeriod(m,p);
+    if(!r){ lines.push(`${m.flatNo}`); pending.push(m.flatNo); continue; }
+    const parts=itemsOf(r), maint=parts.filter(i=>i.k==="maint").reduce((s,i)=>s+i.amount,0)||r.amount, other=parts.filter(i=>i.k!=="maint");
+    total+=Number(r.amount)||0; paid.push(m.flatNo);
+    let t=`${m.flatNo}  ${inr(maint)}/- ${modeWord(r)} (${fmtDate(r.date)})`;
+    if(other.length) t+=` + ${other.map(i=>`${shortItem(i.label)} ${inr(i.amount)}`).join(", ")}`;
+    if(r.remarks) t+=`\n( ${r.remarks} )`;
+    lines.push(t);
+  }
+  if(withSum){ lines.push("", `✅ Paid: ${paid.length} of ${list.length} flats · Rs. ${inr(total)}/-`); if(pending.length) lines.push(`⏳ Pending: ${pending.join(", ")}`); lines.push("", "Please pay at the earliest if not paid. Thank you."); }
+  return lines.join("\n");
+}
+function stPeriods(){ const today=todayISO(); return periods().filter(p=>isoOf(p.start)<=today).reverse(); }
+function renderStatus(keepText){
+  const sel=$("stPeriod"), k=sel.value, ps=stPeriods();
+  sel.innerHTML=ps.map(p=>`<option value="${p.key}">${periodFull(p)}</option>`).join("");
+  sel.value=ps.some(p=>p.key===k)?k:(ps[0]?.key||"");
+  const p=ps.find(x=>x.key===sel.value); if(!p) return;
+  if(!keepText) $("stText").value=statusMessage(p,$("stSum").checked);
+  $("stWA").href="https://wa.me/?text="+encodeURIComponent($("stText").value);
+}
+$("stPeriod").addEventListener("change",()=>renderStatus());
+$("stSum").addEventListener("change",()=>renderStatus());
+$("stText").addEventListener("input",()=>{ $("stWA").href="https://wa.me/?text="+encodeURIComponent($("stText").value); });
+$("stCopy").addEventListener("click",async e=>{ try{ await navigator.clipboard.writeText($("stText").value); e.target.textContent="Copied"; }catch(err){ $("stText").select(); e.target.textContent="Long-press → Copy"; } setTimeout(()=>e.target.textContent="Copy",2500); });
+const _renderHistory=renderHistory;
+renderHistory=function(){ _renderHistory(); if(document.activeElement!==$("stText")) renderStatus(); };
+function statusForReceipt(r){ const p=stPeriods().find(p=>{ const s=isoOf(p.start),e=periodEnd(p); return (r.from&&r.from>=s&&r.from<=e)||r.periodKey===p.key; }); return p; }
+/* ---------- local storage + backup ---------- */
+const KEY="stuti-avenue-receipts-v1", META="stuti-avenue-receipts-meta";
+const SEED={"config": {"address": "RESIDANCY SERVAY NO 367, PLOT NO. 327, OPP SOMCHINTAMANI APPT, TP 14, SURAT 395009", "cycle": "apr", "dueDays": 15, "extras": {"entry": 0, "flattx": 0, "nonocc": 0, "other": 0, "parking": 0, "repair": 0, "sharetx": 0, "sinking": 0}, "fmt": "plain", "name": "STUTI AVENUE CO. OP. HOUSING SOCIETY LTD D BLDG", "penaltyRate": 10, "prefix": "SA", "reg": "SRT/S 7124/ DT. 22/11/2012", "rentRate": 1700, "secretary": "", "selfRate": 1400, "startSeq": 1, "treasurer": ""}, "members": [{"id": "f02", "flatNo": "D-102", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f03", "flatNo": "D-103", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f04", "flatNo": "D-104", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f05", "flatNo": "D-201", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f06", "flatNo": "D-202", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f07", "flatNo": "D-203", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f08", "flatNo": "D-204", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f09", "flatNo": "D-301", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f10", "flatNo": "D-302", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f11", "flatNo": "D-303", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f12", "flatNo": "D-304", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f13", "flatNo": "D-401", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f14", "flatNo": "D-402", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f15", "flatNo": "D-403", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f17", "flatNo": "D-501", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f18", "flatNo": "D-502", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f19", "flatNo": "D-503", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f20", "flatNo": "D-504", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrpbvq1", "flatNo": "D-101", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrqe8qi", "flatNo": "D-404", "name": "", "mobile": "", "email": "", "occ": "self"}], "receipts": []};
+function readJSON(k){ try{ const s=localStorage.getItem(k); return s?JSON.parse(s):null; }catch(e){ return null; } }
+function meta(){ return readJSON(META)||{}; }
+function setMeta(patch){ try{ localStorage.setItem(META, JSON.stringify({...meta(),...patch})); }catch(e){} }
+function persistLocal(){
+  try{ localStorage.setItem(KEY, JSON.stringify({config:cfg,members,receipts,soc})); setMeta({changedAt:new Date().toISOString()}); }
+  catch(e){ const b=$("banner"); b.hidden=false; b.textContent="Could not save on this phone: "+e.message+". Save a backup file now."; }
+  backupStatus();
+}
+async function backupData(){ return {app:"stuti-avenue-receipts",version:2,savedAt:new Date().toISOString(),config:cfg,members,receipts,soc,files:await exportFiles()}; }
+function backupName(){ const d=new Date(); return `Stuti Avenue backup ${d.getFullYear()}-${pad(d.getMonth()+1,2)}-${pad(d.getDate(),2)} ${pad(d.getHours(),2)}${pad(d.getMinutes(),2)}.json`; }
+function backupStatus(){
+  const m=meta(), last=m.backupAt?new Date(m.backupAt):null;
+  const unsaved = !last || (m.changedAt && new Date(m.changedAt)>last);
+  $("bkStats").innerHTML = `<span>Flats <b>${members.length}</b></span><span>Receipts <b>${receipts.length}</b></span><span>Expenses <b>${soc.expenses.length}</b></span><span>Documents <b>${soc.docs.length}</b></span><span>Last backup <b>${last?last.toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"}):"never"}</b></span>`;
+  const b=$("banner");
+  if(!CLOUD.on && unsaved && (receipts.length||soc.expenses.length||soc.docs.length||soc.tasks.length)){ b.hidden=false; b.innerHTML=`You have changes that are not in a backup yet. <button class="btn small" type="button" id="bannerBk">Save backup now</button>`; }
+  else b.hidden=true;
+}
+document.addEventListener("click",e=>{ if(e.target.id==="bannerBk") $("bkShare").click(); });
+async function doBackup(share){
+  const msg0=$("bkMsg"); setMsg(msg0,"","Preparing backup…");
+  let text; try{ text=JSON.stringify(await backupData()); }catch(err){ setMsg(msg0,"err","Could not prepare the backup: "+(err.message||err)); return; }
+  const name=backupName();
+  const blob=new Blob([text],{type:"application/json"}), msg=$("bkMsg");
+  if(share){
+    const file=new File([blob],name,{type:"application/json"});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      try{ await navigator.share({files:[file],title:name}); setMeta({backupAt:new Date().toISOString()}); msg.className="msg ok"; msg.textContent=`Backup "${name}" shared. Check that it appears in JioCloud.`; }
+      catch(err){ if(err.name!=="AbortError"){ msg.className="msg err"; msg.textContent="Could not share the backup: "+err.message; } }
+      backupStatus(); return;
+    }
+  }
+  saveBlob(blob,name); setMeta({backupAt:new Date().toISOString()});
+  msg.className="msg ok"; msg.textContent=`Backup "${name}" downloaded. Upload it to JioCloud from the JioCloud app.`; backupStatus();
+}
+$("bkShare").addEventListener("click",()=>doBackup(true));
+$("bkDownload").addEventListener("click",()=>doBackup(false));
+$("bkPick").addEventListener("click",()=>$("bkFile").click());
+$("bkFile").addEventListener("change",async()=>{
+  const f=$("bkFile").files[0]; $("bkFile").value=""; if(!f) return;
+  const msg=$("bkMsg"), box=$("bkConfirm");
+  let data; try{ data=JSON.parse(await f.text()); }catch(e){ msg.className="msg err"; msg.textContent="That file is not a backup from this app."; return; }
+  if(data.app!=="stuti-avenue-receipts" || !Array.isArray(data.members) || !Array.isArray(data.receipts)){ msg.className="msg err"; msg.textContent="That file is not a backup from this app."; return; }
+  box.hidden=false; msg.textContent="";
+  box.innerHTML=`<p>Replace the data on this phone (${members.length} flats, ${receipts.length} receipts) with the backup from <b>${esc(new Date(data.savedAt).toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"}))}</b> (${data.members.length} flats, ${data.receipts.length} receipts${data.soc?`, ${data.soc.expenses.length} expenses, ${data.soc.docs.length} documents`:""})?</p>
+    <div class="links"><button class="btn danger" type="button" id="bkYes">Replace with backup</button><button class="btn ghost" type="button" id="bkNo">Cancel</button></div>`;
+  $("bkNo").onclick=()=>{ box.hidden=true; };
+  $("bkYes").onclick=async()=>{
+    setMsg(msg,"","Restoring…");
+    try{ if(Array.isArray(data.files)) await importFiles(data.files); }catch(err){ setMsg(msg,"err","Could not restore the attached files: "+(err.message||err)); return; }
+    cfg={...DEFAULT_CFG,...(data.config||{})}; members=data.members; receipts=data.receipts; draftMembers=null;
+    if(data.soc) soc=normSoc(data.soc);
+    persist(); setMeta({backupAt:data.savedAt}); applyCfg(); fillMemberSelect(); box.hidden=true;
+    renderSociety(); msg.className="msg ok"; msg.textContent="Backup restored."; backupStatus();
+  };
+});
+
+(function boot(){
+  let saved=readJSON(KEY);
+  const fresh=!saved; if(fresh) saved=SEED;
+  cfg={...DEFAULT_CFG,...(saved.config||{})}; members=saved.members||[]; receipts=saved.receipts||[]; soc=normSoc(saved.soc);
+  if(fresh) persist();
+  document.body.classList.add("role-admin");
+  applyCfg(); fillMemberSelect(); renderSociety(); backupStatus();
+  $("olHost").textContent=location.hostname||"(open the app from its web address)";
+  if(CLOUD.setup) startCloud(); else renderOnline();
+  try{ navigator.storage?.persist?.(); }catch(e){}
+  if("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(()=>{});
+})();
+</script>
+
+</body>
+</html>
