@@ -13,8 +13,8 @@
  "start_url": "./",
  "scope": "./",
  "display": "standalone",
- "background_color": "#eef1f6",
- "theme_color": "#2340a8",
+ "background_color": "#d8dde4",
+ "theme_color": "#38539a",
  "icons": [
   {
    "src": "icon-192.png",

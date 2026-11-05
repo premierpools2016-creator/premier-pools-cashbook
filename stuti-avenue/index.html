@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#2340a8">
+<meta name="theme-color" content="#38539a">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -95,6 +95,14 @@ td.flat input{width:80px;font-family:var(--mono)}
 .stats b{color:var(--ink);font-family:var(--mono)}
 .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
 .empty{padding:28px;text-align:center;color:var(--muted)}
+:root{--bg:#d8dde4;--paper:#e7ebf0;--ink:#2a3343;--muted:#5b6578;--line:#c2c9d4;--carbon:#38539a;--carbon-soft:#d2d9ea;--stamp:#2f7652;--stamp-soft:#cfe2d6;--danger:#a23b33;--warn:#85590a;--warn-soft:#ebdfc0;--bad-soft:#ead1ce;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#d8dde4;--paper:#e7ebf0;--ink:#2a3343;--muted:#5b6578;--line:#c2c9d4;--carbon:#38539a;--carbon-soft:#d2d9ea;--stamp:#2f7652;--stamp-soft:#cfe2d6;--danger:#a23b33;--warn:#85590a;--warn-soft:#ebdfc0;--bad-soft:#ead1ce;color-scheme:light}}
+:root[data-theme="dark"]{--bg:#d8dde4;--paper:#e7ebf0;--ink:#2a3343;--muted:#5b6578;--line:#c2c9d4;--carbon:#38539a;--carbon-soft:#d2d9ea;--stamp:#2f7652;--stamp-soft:#cfe2d6;--danger:#a23b33;--warn:#85590a;--warn-soft:#ebdfc0;--bad-soft:#ead1ce;color-scheme:light}
+input,select,textarea{background:#f0f2f6}
+input:disabled,select:disabled{background:var(--bg);color:var(--muted)}
+.sheet{background:#f3f4f6}
+.editbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;background:var(--warn-soft);border:1px solid var(--warn);border-radius:9px;padding:8px 12px;margin-bottom:12px;font-size:14px}
+.role-entry [data-redit],.role-viewer [data-redit]{display:none!important}
 .stbox textarea{flex:1 1 100%;font-family:var(--body);font-size:14px;line-height:1.45}
 .stbox label{flex:1 1 200px}
 .acct{font-size:12px;color:var(--muted);margin-top:6px;overflow-wrap:anywhere}
@@ -229,6 +237,7 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
   <section id="tab-receipt">
     <div class="grid">
       <form class="panel" id="rForm" autocomplete="off">
+        <div class="editbar" id="rEditBar" hidden><span id="rEditTxt"></span><button class="btn ghost small" type="button" id="rEditCancel">Cancel edit</button></div>
         <h2>Receipt details</h2>
         <div class="fields">
           <label>Receipt no.<input id="rSeq" class="num" type="number" min="1" required></label>
@@ -887,6 +896,19 @@ $("rForm").addEventListener("submit", async e=>{
   if(d.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)){ msg.className="msg err"; msg.textContent="The email address looks incomplete."; return; }
   if(d.mobile && !/^\d{10}$/.test(d.mobile)){ msg.className="msg err"; msg.textContent="Mobile number must be 10 digits."; return; }
   if(d.method==="Cheque" && (!d.chqNo || !d.bank)){ msg.className="msg err"; msg.textContent="For cheque deposit, enter at least the cheque number and bank name."; return; }
+  if(rEdit){
+    const old=receipts.find(r=>r.receiptNo===rEdit); if(!old){ msg.className="msg err"; msg.textContent="That receipt no longer exists."; endEdit(); return; }
+    const rec={...old,...d,id:old.id||("r"+pad(old.seq,5)),seq:old.seq,receiptNo:old.receiptNo,createdAt:old.createdAt,by:old.by||"",editedAt:new Date().toISOString(),editedBy:CLOUD.on?CLOUD.email:""};
+    ["txn","via","chqNo","chqDate","bank","branch"].forEach(k=>{ if(!(k in d)) delete rec[k]; });
+    $("saveBtn").disabled=true;
+    try{
+      receipts[receipts.indexOf(old)]=rec; persist(); renderHistory();
+      msg.className="msg ok"; msg.textContent=`Receipt ${rec.receiptNo} updated.`;
+      await downloadPDF(rec,msg); if(msg.className.includes("ok")) msg.textContent=`Receipt ${rec.receiptNo} updated and PDF downloaded.`; endEdit(); resetForm(); showShare(rec);
+    }catch(err){ msg.className="msg err"; msg.textContent="Could not update: "+(err.message||err.code); }
+    finally{ $("saveBtn").disabled=false; }
+    return;
+  }
   const dup = d.inclMaint && receipts.find(r=>r.memberId===d.memberId && r.inclMaint!==false && r.periodKey===d.periodKey);
   if(dup && !$("saveBtn").dataset.confirm){
     $("saveBtn").dataset.confirm="1"; $("saveBtn").textContent="Save anyway";
@@ -1113,6 +1135,7 @@ function renderHistory(){
     <td class="num" style="text-align:right">Rs. ${inr(r.amount)}</td>
     <td style="white-space:nowrap"><button class="btn ghost small" data-pdf="${esc(r.receiptNo)}" type="button">PDF</button>
       ${shareLinks(r,true)}
+      <button class="btn ghost small" data-redit="${esc(r.receiptNo)}" type="button">Edit</button>
       <button class="btn danger small" data-rdel="${esc(r.receiptNo)}" type="button">Delete</button></td></tr>`).join("")
     : `<tr><td colspan="8" class="empty">${receipts.length?"No receipts match your search.":"No receipts issued yet. Saved receipts appear here."}</td></tr>`;
   const pk=currentPeriodKey(); const cur=receipts.filter(r=>r.periodKey===pk && r.inclMaint!==false);
@@ -2269,6 +2292,32 @@ $("stCopy").addEventListener("click",async e=>{ try{ await navigator.clipboard.w
 const _renderHistory=renderHistory;
 renderHistory=function(){ _renderHistory(); if(document.activeElement!==$("stText")) renderStatus(); };
 function statusForReceipt(r){ const p=stPeriods().find(p=>{ const s=isoOf(p.start),e=periodEnd(p); return (r.from&&r.from>=s&&r.from<=e)||r.periodKey===p.key; }); return p; }
+
+/* ---------- edit an issued receipt (admin) ---------- */
+let rEdit=null;
+function endEdit(){ rEdit=null; $("rEditBar").hidden=true; $("rSeq").disabled=false; $("saveBtn").textContent="Save & download PDF"; }
+function startEdit(no){
+  const r=receipts.find(x=>x.receiptNo===no); if(!r) return;
+  resetForm(); rEdit=no;
+  $("rMember").value=r.memberId||""; $("rName").value=r.name||""; $("rMobile").value=r.mobile||""; $("rEmail").value=r.email||"";
+  $("rOcc").value=r.occ||"self"; $("rDate").value=r.date||todayISO();
+  $("rSeq").value=r.seq; $("rSeq").dataset.touched="1"; $("rSeq").disabled=true;
+  $("rIncMaint").checked=r.inclMaint!==false;
+  if(r.from){ $("rFrom").value=r.from; $("rTo").value=r.to||sixMonthsEnd(r.from); }
+  for(const x of EXTRAS){ const it=itemsOf(r).find(i=>i.k===x.k); const c=$("x-"+x.k), a=$("xa-"+x.k);
+    c.checked=!!it; c.dataset.touched="1"; a.value=it?it.amount:""; a.dataset.touched="1"; }
+  const oth=itemsOf(r).find(i=>i.k==="other"); $("xd-other").value=oth?String(oth.label).replace(/^Other:\s*/,"").replace(/^Other expense$/,""):"";
+  if(r.dueDate){ $("rDue").value=r.dueDate; $("rDue").dataset.touched="1"; }
+  const rb=document.querySelector(`input[name="method"][value="${r.method}"]`); if(rb) rb.checked=true;
+  $("rTxn").value=r.txn||""; if(r.via) $("rApp").value=r.via;
+  $("rChqNo").value=r.chqNo||""; $("rChqDate").value=r.chqDate||""; $("rBank").value=r.bank||""; $("rBranch").value=r.branch||"";
+  $("rRemarks").value=r.remarks||"";
+  $("rEditTxt").innerHTML=`Editing receipt <b>${esc(r.receiptNo)}</b> · Flat ${esc(r.flatNo)}. The receipt number stays the same.`;
+  $("rEditBar").hidden=false; $("saveBtn").textContent="Update & download PDF"; $("rMsg").textContent=""; $("shareBar").hidden=true;
+  update(); goTab("receipt");
+}
+$("rEditCancel").addEventListener("click",()=>{ endEdit(); resetForm(); $("rMsg").textContent="Edit cancelled."; });
+document.addEventListener("click",e=>{ const no=e.target.dataset&&e.target.dataset.redit; if(no) startEdit(no); });
 /* ---------- local storage + backup ---------- */
 const KEY="stuti-avenue-receipts-v1", META="stuti-avenue-receipts-meta";
 const SEED={"config": {"address": "RESIDANCY SERVAY NO 367, PLOT NO. 327, OPP SOMCHINTAMANI APPT, TP 14, SURAT 395009", "cycle": "apr", "dueDays": 15, "extras": {"entry": 0, "flattx": 0, "nonocc": 0, "other": 0, "parking": 0, "repair": 0, "sharetx": 0, "sinking": 0}, "fmt": "plain", "name": "STUTI AVENUE CO. OP. HOUSING SOCIETY LTD D BLDG", "penaltyRate": 10, "prefix": "SA", "reg": "SRT/S 7124/ DT. 22/11/2012", "rentRate": 1700, "secretary": "", "selfRate": 1400, "startSeq": 1, "treasurer": ""}, "members": [{"id": "f02", "flatNo": "D-102", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f03", "flatNo": "D-103", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f04", "flatNo": "D-104", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f05", "flatNo": "D-201", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f06", "flatNo": "D-202", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f07", "flatNo": "D-203", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f08", "flatNo": "D-204", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f09", "flatNo": "D-301", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f10", "flatNo": "D-302", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f11", "flatNo": "D-303", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f12", "flatNo": "D-304", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f13", "flatNo": "D-401", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f14", "flatNo": "D-402", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f15", "flatNo": "D-403", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f17", "flatNo": "D-501", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f18", "flatNo": "D-502", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f19", "flatNo": "D-503", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f20", "flatNo": "D-504", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrpbvq1", "flatNo": "D-101", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrqe8qi", "flatNo": "D-404", "name": "", "mobile": "", "email": "", "occ": "self"}], "receipts": []};
