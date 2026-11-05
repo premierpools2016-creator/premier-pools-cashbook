@@ -2388,7 +2388,15 @@ $("bkFile").addEventListener("change",async()=>{
   $("olHost").textContent=location.hostname||"(open the app from its web address)";
   if(CLOUD.setup) startCloud(); else renderOnline();
   try{ navigator.storage?.persist?.(); }catch(e){}
-  if("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(()=>{});
+  if("serviceWorker" in navigator && location.protocol.startsWith("http")){
+    const hadCtl=!!navigator.serviceWorker.controller; let reloaded=false;
+    navigator.serviceWorker.addEventListener("controllerchange",()=>{ if(hadCtl && !reloaded){ reloaded=true; location.reload(); } });
+    navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).then(reg=>{
+      const check=()=>reg.update().catch(()=>{});
+      document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") check(); });
+      setInterval(check,30*60*1000);
+    }).catch(()=>{});
+  }
 })();
 </script>
 
