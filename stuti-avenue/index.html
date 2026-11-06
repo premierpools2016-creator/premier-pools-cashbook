@@ -95,6 +95,9 @@ td.flat input{width:80px;font-family:var(--mono)}
 .stats b{color:var(--ink);font-family:var(--mono)}
 .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
 .empty{padding:28px;text-align:center;color:var(--muted)}
+.repay{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:8px;padding:10px;border:1px dashed var(--line);border-radius:8px;background:var(--bg)}
+.repay label{flex:1 1 130px}
+.role-entry [data-exrepay],.role-viewer [data-exrepay]{display:none!important}
 :root{--bg:#d8dde4;--paper:#e7ebf0;--ink:#2a3343;--muted:#5b6578;--line:#c2c9d4;--carbon:#38539a;--carbon-soft:#d2d9ea;--stamp:#2f7652;--stamp-soft:#cfe2d6;--danger:#a23b33;--warn:#85590a;--warn-soft:#ebdfc0;--bad-soft:#ead1ce;color-scheme:light}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#d8dde4;--paper:#e7ebf0;--ink:#2a3343;--muted:#5b6578;--line:#c2c9d4;--carbon:#38539a;--carbon-soft:#d2d9ea;--stamp:#2f7652;--stamp-soft:#cfe2d6;--danger:#a23b33;--warn:#85590a;--warn-soft:#ebdfc0;--bad-soft:#ead1ce;color-scheme:light}}
 :root[data-theme="dark"]{--bg:#d8dde4;--paper:#e7ebf0;--ink:#2a3343;--muted:#5b6578;--line:#c2c9d4;--carbon:#38539a;--carbon-soft:#d2d9ea;--stamp:#2f7652;--stamp-soft:#cfe2d6;--danger:#a23b33;--warn:#85590a;--warn-soft:#ebdfc0;--bad-soft:#ead1ce;color-scheme:light}
@@ -269,6 +272,7 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
               <label><input type="radio" name="method" value="Online" checked> Online</label>
               <label><input type="radio" name="method" value="Cash"> Cash</label>
               <label><input type="radio" name="method" value="Cheque"> Cheque deposit</label>
+              <label><input type="radio" name="method" value="Adjusted"> Adjusted</label>
             </div>
             <div class="fields" id="onlineBox" style="margin-top:12px">
               <label>UPI / transaction ref.<input id="rTxn"></label>
@@ -368,7 +372,12 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
           <label>Bill / invoice no.<input id="exBill"></label>
           <label>Bill period<input id="exPeriod" placeholder="e.g. Sep–Oct 2026"></label>
           <label>Amount (Rs.)<input id="exAmt" type="number" min="0" step="1" class="num" required></label>
-          <fieldset>
+          <label class="full">Who paid?
+            <select id="exFrom"><option value="society">D building paid (society funds)</option><option value="member">A member paid from own account (repay later)</option></select>
+          </label>
+          <label class="full" id="exPayerBox" hidden>Member who paid<select id="exPayer"></select></label>
+          <p class="hint full" id="exFromHint" hidden style="margin:-4px 0 0">Saved as money D building owes this member. When you repay, tap "Record repayment" on the expense.</p>
+          <fieldset id="exPayFs">
             <legend>Paid by</legend>
             <div class="seg">
               <label><input type="radio" name="exMethod" value="Cash" checked> Cash</label>
@@ -784,6 +793,7 @@ $("extras").addEventListener("change",e=>{
   if(!e.target.checked && k!=="penalty") amt.value="";
 });
 $("extras").addEventListener("input",e=>{
+  if(e.target.dataset.x) e.target.dataset.touched="1";
   const k=e.target.dataset.xa;
   if(k){ e.target.dataset.touched="1"; const c=$("x-"+k); if(Number(e.target.value)>0){ c.checked=true; c.dataset.touched="1"; } }
   if(e.target.id==="rDue") e.target.dataset.touched="1";
@@ -853,6 +863,7 @@ function update(){
 function payLine(r){
   if(r.method==="Cash") return "Cash";
   if(r.method==="Online") return `Online (${r.via||"UPI"})${r.txn?" · Ref "+r.txn:""}`;
+  if(r.method==="Adjusted") return "Adjusted against amount owed by D building to the member";
   return `Cheque deposit${r.chqNo?" · No. "+r.chqNo:""}${r.chqDate?" dt. "+fmtDate(r.chqDate):""}${r.bank?" · "+r.bank:""}${r.branch?", "+r.branch:""}`;
 }
 function copyHTML(r,label){
@@ -1324,7 +1335,9 @@ function applyCfg(){ fillSettings(); fillPeriodSelect(); renderMembers(); update
 $("rDate").value=todayISO(); fillSettings(); fillPeriodSelect(); renderMembers(); renderHistory(); update();
 
 /* ================= SOCIETY: expenses, alerts, tasks, contacts, documents ================= */
-const DEFAULT_HEADS=["Light bill – Meter 1","Light bill – Meter 2","Lift maintenance (annual AMC)","Lift repairs","Overhead tank cleaning contract","Housekeeping labour wages","Watchman salary","Water / plumbing repairs","Electrical repairs","Stationery & printing","Bank charges","Other"];
+const COMMON_HEADS=["Common society share (A–E) – Generator bill","Common society share (A–E) – Other"];
+const COMMON_PARTY="Stuti Avenue common bank account";
+const DEFAULT_HEADS=["Light bill – Meter 1","Light bill – Meter 2",...COMMON_HEADS,"Lift maintenance (annual AMC)","Lift repairs","Overhead tank cleaning contract","Housekeeping labour wages","Watchman salary","Water / plumbing repairs","Electrical repairs","Stationery & printing","Bank charges","Other"];
 const DOC_CATS=["Registration & bye-laws","Share certificates","Meeting minutes","Audit reports","Property tax & bills","Insurance","Contracts & AMC","Building plans & NOC","Bank documents","Other"];
 const blankSoc=()=>({
   heads:[...DEFAULT_HEADS], expenses:[], tasks:[], docs:[], complaints:[],
@@ -1413,6 +1426,7 @@ function renderAlerts(){
   soc.reminders.forEach(r=>{ const s=rmState(r); if(s.cls==="bad"||s.cls==="warn") items.push({n:s.n,html:`<b>${esc(r.title)}</b> — ${s.txt}`,tab:"tasks"}); });
   soc.tasks.filter(t=>!t.done && t.due && daysUntil(t.due)<=2).forEach(t=>{ const n=daysUntil(t.due); items.push({n,html:`Task <b>${esc(t.title)}</b> (${esc(whoName(t.who))}) — ${n<0?`overdue ${-n} day${n===-1?"":"s"}`:n===0?"due today":`due in ${n} day${n===1?"":"s"}`}`,tab:"tasks"}); });
   if(ROLE!=="viewer"){ const oc=(soc.complaints||[]).filter(c=>c.status!=="Resolved").length; if(oc) items.push({n:-1,html:`<b>${oc} open complaint${oc>1?"s":""}</b> waiting for the committee`,tab:"complaints"}); }
+  if(ROLE!=="viewer"){ const ow=owedAsOf(); if(ow.length) items.push({n:-1,html:`<b>Rs. ${inr(ow.reduce((s,x)=>s+x.amount,0))}</b> to repay to ${[...new Set(ow.map(x=>x.payerFlat))].join(", ")} (paid on D building's behalf)`,tab:"expenses"}); }
   items.sort((a,b)=>a.n-b.n);
   const box=$("alerts");
   box.hidden=!items.length;
@@ -1425,6 +1439,9 @@ let exEdit=null, exKeep=[], exNew=[];
 const exMethod=()=>document.querySelector('input[name="exMethod"]:checked').value;
 function nextVoucher(){ return soc.expenses.reduce((m,x)=>Math.max(m,Number(x.seq)||0),0)+1; }
 function fillHeads(){
+  for(const h of COMMON_HEADS) if(!soc.heads.includes(h)){ const i=soc.heads.indexOf("Other"); soc.heads.splice(i<0?soc.heads.length:i,0,h); }
+  const ps=$("exPayer"), pk=ps.value;
+  ps.innerHTML=`<option value="">Choose member…</option>`+[...members].sort(flatSort).map(m=>`<option value="${esc(m.id)}">${esc(memberLabel(m))}</option>`).join(""); ps.value=pk;
   const sel=$("exHead"), keep=sel.value;
   sel.innerHTML=soc.heads.map(h=>`<option>${esc(h)}</option>`).join("");
   if(keep && soc.heads.includes(keep)) sel.value=keep;
@@ -1439,6 +1456,8 @@ function exUpdateForm(){
   $("exRefLbl").firstChild.textContent = m==="Cheque"?"Cheque no.":"Transaction ref.";
   $("exBankLbl").hidden = m!=="Cheque";
   $("exOtherBox").hidden = $("exHead").value!=="Other";
+  const mem=$("exFrom").value==="member"; $("exPayerBox").hidden=!mem; $("exFromHint").hidden=!mem; $("exPayFs").hidden=mem;
+  if(COMMON_HEADS.includes($("exHead").value) && !$("exParty").value.trim()) $("exParty").value=COMMON_PARTY;
   if(!exEdit) $("exNo").value="V-"+pad(nextVoucher());
 }
 $("exForm").addEventListener("change",exUpdateForm);
@@ -1458,7 +1477,7 @@ $("exThumbs").addEventListener("click",e=>{
   if(n!==undefined){ exNew.splice(Number(n),1); renderThumbs(); }
 });
 function exReset(){
-  exEdit=null; exKeep=[]; exNew=[]; $("exForm").reset(); $("exDate").value=todayISO();
+  exEdit=null; exKeep=[]; exNew=[]; $("exForm").reset(); $("exDate").value=todayISO(); $("exFrom").value="society";
   $("exTitle").textContent="New expense entry"; $("exSave").textContent="Save expense"; renderThumbs(); exUpdateForm();
 }
 $("exCancel").addEventListener("click",()=>{ exReset(); setMsg($("exMsg"),"",""); });
@@ -1467,22 +1486,46 @@ $("exForm").addEventListener("submit",async e=>{
   const amt=Math.round(Number($("exAmt").value)||0);
   if(amt<=0){ setMsg(msg,"err","Enter the amount paid."); return; }
   if($("exHead").value==="Other" && !$("exOther").value.trim()){ setMsg(msg,"err","Describe what the expense is for."); return; }
+  if($("exFrom").value==="member" && !$("exPayer").value){ setMsg(msg,"err","Choose the member who paid."); return; }
   $("exSave").disabled=true;
   try{
     const newIds=[]; for(const f of exNew) newIds.push(await storeFile(f));
     const old=exEdit?soc.expenses.find(x=>x.id===exEdit):null;
     if(old) for(const id of (old.files||[])) if(!exKeep.includes(id)) await IDB.del(id).catch(()=>{});
-    const m=exMethod();
-    const rec={id:old?old.id:uid("e"), seq:old?old.seq:nextVoucher(), date:$("exDate").value||todayISO(), head:$("exHead").value, other:$("exOther").value.trim(),
+    const byMem=$("exFrom").value==="member", m=byMem?"Member":exMethod(), payer=members.find(x=>x.id===$("exPayer").value);
+    const rec={paidFrom:byMem?"member":"society", payerId:byMem?$("exPayer").value:"", payerFlat:byMem&&payer?payer.flatNo:"", payerName:byMem&&payer?payer.name:"",
+      reimbs:byMem&&old?reimbsOf(old):[],
+      id:old?old.id:uid("e"), seq:old?old.seq:nextVoucher(), date:$("exDate").value||todayISO(), head:$("exHead").value, other:$("exOther").value.trim(),
       party:$("exParty").value.trim(), bill:$("exBill").value.trim(), period:$("exPeriod").value.trim(), amount:amt, method:m,
-      ref:m==="Cash"?"":$("exRef").value.trim(), bank:m==="Cheque"?$("exBank").value.trim():"", remarks:$("exRemarks").value.trim(),
+      ref:m==="Cash"||byMem?"":$("exRef").value.trim(), bank:m==="Cheque"?$("exBank").value.trim():"", remarks:$("exRemarks").value.trim(),
       files:[...exKeep,...newIds], createdAt:old?old.createdAt:new Date().toISOString()};
     if(old) Object.assign(old,rec); else soc.expenses.push(rec);
     persist(); setMsg(msg,"ok",`${old?"Updated":"Saved"} voucher V-${pad(rec.seq)} — Rs. ${inr(rec.amount)}${rec.files.length?` with ${rec.files.length} attachment${rec.files.length>1?"s":""}`:""}.`);
-    exNew.forEach(f=>f._url&&URL.revokeObjectURL(f._url)); exReset(); renderExpenses();
+    exNew.forEach(f=>f._url&&URL.revokeObjectURL(f._url)); exReset(); renderExpenses(); renderAlerts();
   }catch(err){ setMsg(msg,"err","Could not save: "+(err.message||err)+". The phone may be out of space."); }
   finally{ $("exSave").disabled=false; }
 });
+const isMemberPaid=x=>x.paidFrom==="member";
+const reimbsOf=x=>x.reimbs||(x.reimb?[x.reimb]:[]);
+const repaidBy=(x,t)=>reimbsOf(x).filter(r=>r.date&&r.date<=(t||"9999-12-31")).reduce((s,r)=>s+(Number(r.amount)||0),0);
+const remainingOf=(x,t)=>Math.max(0,x.amount-repaidBy(x,t));
+function owedAsOf(to){ const t=to||"9999-12-31"; return soc.expenses.filter(x=>isMemberPaid(x)&&x.date<=t&&remainingOf(x,t)>0).map(x=>({...x,amount:remainingOf(x,t),fullAmount:x.amount})); }
+function paymentsOut(from,to){ const out=[]; for(const x of soc.expenses){ if(!isMemberPaid(x)) out.push({date:x.date,amount:x.amount}); else for(const r of reimbsOf(x)) if(r.date) out.push({date:r.date,amount:Number(r.amount)||0}); }
+  return out.filter(o=>(!from||o.date>=from)&&(!to||o.date<=to)); }
+function modeText(x){ if(!isMemberPaid(x)) return x.method+(x.ref?" "+x.ref:""); const rem=remainingOf(x); return `By ${x.payerFlat||"member"}`+(rem?` (owed ${inr(rem)})`:" (repaid)"); }
+function memberPaidHTML(x){
+  const rs=reimbsOf(x), rem=remainingOf(x);
+  return `<div class="muted">Paid by <b>${esc(x.payerFlat)}${x.payerName?" "+esc(x.payerName):""}</b> from own account${x.remarks?" · "+esc(x.remarks):""}</div>
+  ${rs.map(r=>`<div class="muted">↳ Repaid Rs. ${inr(r.amount)} on ${fmtDate(r.date)} · ${esc(r.method)}${r.ref?" "+esc(r.ref):""}</div>`).join("")}
+  <div class="links" style="margin-top:4px">${!rem?`<span class="pill st-ok">Fully repaid</span>`
+    :`<span class="pill st-bad">D building owes Rs. ${inr(rem)}</span><button class="btn small" type="button" data-exrepay="${x.id}">Record repayment</button>`}</div>
+  ${!rem?"":`<div class="repay" id="rp-${x.id}" hidden>
+    <label>Date repaid<input type="date" data-f="date"></label>
+    <label>Amount (Rs.)<input type="number" min="0" data-f="amt" class="num"></label>
+    <label>Paid by<select data-f="mode"><option>Cash</option><option>Online</option><option>Cheque</option><option>Adjusted against maintenance</option></select></label>
+    <label>Ref / cheque no.<input data-f="ref"></label>
+    <button class="btn small" type="button" data-exrepaysave="${x.id}">Save repayment</button></div>`}`;
+}
 const exHeadText=x=>x.head==="Other"&&x.other?`Other: ${x.other}`:x.head;
 function exFiltered(){
   const mo=$("exFMonth").value, hd=$("exFHead").value, q=$("exFSearch").value.trim().toLowerCase();
@@ -1495,12 +1538,12 @@ function renderExpenses(){
   fm.innerHTML=`<option value="">All months</option>`+months.map(m=>{ const [y,mm]=m.split("-"); return `<option value="${m}">${MONTHS[Number(mm)-1]} ${y}</option>`; }).join(""); fm.value=months.includes(k)?k:"";
   fillHeads();
   const list=exFiltered();
-  $("exStats").innerHTML=`<span>Entries <b>${list.length}</b></span><span>Total <b>Rs. ${inr(list.reduce((s,x)=>s+x.amount,0))}</b></span>`;
+  const owed=owedAsOf(); $("exStats").innerHTML=`<span>Entries <b>${list.length}</b></span><span>Total <b>Rs. ${inr(list.reduce((s,x)=>s+x.amount,0))}</b></span>${owed.length?`<span>Owed to members <b style="color:var(--danger)">Rs. ${inr(owed.reduce((s,x)=>s+x.amount,0))}</b></span>`:""}`;
   $("exList").innerHTML = list.length ? list.map(x=>`<div class="card">
       <div class="crow"><span class="num muted">V-${pad(x.seq)} · ${fmtDate(x.date)}</span><b class="num amt">Rs. ${inr(x.amount)}</b></div>
       <div class="ctitle">${esc(exHeadText(x))}</div>
       <div class="muted">${esc([x.party,x.bill?"Bill "+x.bill:"",x.period].filter(Boolean).join(" · "))||"&nbsp;"}</div>
-      <div class="muted">${esc(x.method)}${x.ref?" "+esc(x.ref):""}${x.bank?" · "+esc(x.bank):""}${x.remarks?" · "+esc(x.remarks):""}</div>
+      ${isMemberPaid(x)?memberPaidHTML(x):`<div class="muted">${esc(x.method)}${x.ref?" "+esc(x.ref):""}${x.bank?" · "+esc(x.bank):""}${x.remarks?" · "+esc(x.remarks):""}</div>`}
       <div class="crow cfoot">
         <div class="links">${(x.files||[]).map((id,i)=>`<button type="button" class="chip" data-file="${id}">Bill ${i+1}</button>`).join("")||`<span class="chip warnchip">No bill attached</span>`}</div>
         <div class="links"><button class="btn ghost small" type="button" data-exedit="${x.id}">Edit</button><button class="btn danger small" type="button" data-exdel="${x.id}">Delete</button></div>
@@ -1510,19 +1553,28 @@ function renderExpenses(){
 ["exFMonth","exFHead"].forEach(id=>$(id).addEventListener("change",renderExpenses));
 $("exFSearch").addEventListener("input",renderExpenses);
 $("exList").addEventListener("click",async e=>{
-  const ed=e.target.dataset.exedit, dl=e.target.dataset.exdel;
+  const ed=e.target.dataset.exedit, dl=e.target.dataset.exdel, rp=e.target.dataset.exrepay, rs=e.target.dataset.exrepaysave;
+  if(rp){ const box=$("rp-"+rp); box.hidden=!box.hidden; if(!box.hidden){ const x=soc.expenses.find(v=>v.id===rp); box.querySelector("[data-f=date]").value=todayISO(); box.querySelector("[data-f=amt]").value=remainingOf(x); } return; }
+  if(rs){ const x=soc.expenses.find(v=>v.id===rs), box=$("rp-"+rs); if(!x) return;
+    const amt=Math.round(Number(box.querySelector("[data-f=amt]").value)||0), date=box.querySelector("[data-f=date]").value;
+    if(!date||amt<=0){ setMsg($("exMsg"),"err","Enter the repayment date and amount."); return; }
+    const rem=remainingOf(x); if(amt>rem){ setMsg($("exMsg"),"err",`Only Rs. ${inr(rem)} is still owed on this expense.`); return; }
+    x.reimbs=[...reimbsOf(x),{date,amount:amt,method:box.querySelector("[data-f=mode]").value,ref:box.querySelector("[data-f=ref]").value.trim(),at:new Date().toISOString()}]; delete x.reimb;
+    persist(); renderExpenses(); renderAlerts(); const left=remainingOf(x);
+    setMsg($("exMsg"),"ok",`Repayment of Rs. ${inr(amt)} to ${x.payerFlat} recorded.${left?` Still owed: Rs. ${inr(left)}.`:" Fully repaid."}`); return; }
   if(ed){ const x=soc.expenses.find(v=>v.id===ed); if(!x) return;
     exEdit=x.id; exKeep=[...(x.files||[])]; exNew=[];
     $("exDate").value=x.date; if(!soc.heads.includes(x.head)){ soc.heads.splice(soc.heads.length-1,0,x.head); fillHeads(); } $("exHead").value=x.head; $("exOther").value=x.other||"";
     $("exParty").value=x.party||""; $("exBill").value=x.bill||""; $("exPeriod").value=x.period||""; $("exAmt").value=x.amount;
-    document.querySelector(`input[name="exMethod"][value="${x.method}"]`).checked=true; $("exRef").value=x.ref||""; $("exBank").value=x.bank||""; $("exRemarks").value=x.remarks||"";
+    $("exFrom").value=isMemberPaid(x)?"member":"society"; $("exPayer").value=x.payerId||"";
+    { const rb=document.querySelector(`input[name="exMethod"][value="${x.method}"]`); if(rb) rb.checked=true; } $("exRef").value=x.ref||""; $("exBank").value=x.bank||""; $("exRemarks").value=x.remarks||"";
     $("exNo").value="V-"+pad(x.seq); $("exTitle").textContent=`Edit voucher V-${pad(x.seq)}`; $("exSave").textContent="Update expense";
     exUpdateForm(); renderThumbs(); $("exForm").scrollIntoView({behavior:"smooth"}); }
   if(dl){
     if(!e.target.dataset.armed){ e.target.dataset.armed="1"; e.target.textContent="Confirm delete"; return; }
     const x=soc.expenses.find(v=>v.id===dl); if(!x) return;
     for(const id of (x.files||[])) await IDB.del(id).catch(()=>{});
-    soc.expenses=soc.expenses.filter(v=>v!==x); persist(); renderExpenses(); setMsg($("exMsg"),"ok",`Deleted voucher V-${pad(x.seq)}.`);
+    soc.expenses=soc.expenses.filter(v=>v!==x); persist(); renderExpenses(); renderAlerts(); setMsg($("exMsg"),"ok",`Deleted voucher V-${pad(x.seq)}.`);
   }
 });
 $("exHeadsSave").addEventListener("click",()=>{
@@ -1563,16 +1615,18 @@ async function buildExpenseRegister(from,to,withPhotos){
   const byHead={}; list.forEach(x=>{ const h=exHeadText(x).replace(/^Other: .*/,"Other"); byHead[h]=(byHead[h]||0)+x.amount; });
   const total=list.reduce((s,x)=>s+x.amount,0);
   const collected=receipts.filter(r=>inR(r.date)).reduce((s,r)=>s+(Number(r.amount)||0),0);
+  const owedNow=owedAsOf(to).reduce((s,x)=>s+x.amount,0);
   doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(24,33,58); doc.text("Summary by head",M,y); y+=3;
   y=pdfTable(doc,{y,M,W,H,head,cols:[{h:"Expense head",w:136},{h:"Entries",w:20,r:1},{h:"Amount (Rs.)",w:30,r:1}],
     rows:[...Object.keys(byHead).sort().map(h=>({cells:[h,list.filter(x=>exHeadText(x).replace(/^Other: .*/,"Other")===h).length,inr(byHead[h])]})),
       {bold:true,fill:[238,241,246],cells:["Total expenses",list.length,inr(total)]},
       {cells:["Collected from members in this period (all receipts)","",inr(collected)]},
-      {bold:true,fill:total>collected?[252,228,226]:[223,242,232],cells:[total>collected?"Expenses more than collection":"Collection more than expenses","",inr(Math.abs(collected-total))]}]});
+      {bold:true,fill:total>collected?[252,228,226]:[223,242,232],cells:[total>collected?"Expenses more than collection":"Collection more than expenses","",inr(Math.abs(collected-total))]},
+      ...(owedNow?[{cells:["Still owed to members (paid on D building's behalf)","",inr(owedNow)]}]:[])]});
   y+=8; if(y>H-40){ doc.addPage(); y=head(); }
   doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(24,33,58); doc.text("All expense vouchers",M,y); y+=3;
   y=pdfTable(doc,{y,M,W,H,head,cols:[{h:"Voucher",w:17},{h:"Date",w:19},{h:"Head",w:44},{h:"Paid to",w:34},{h:"Bill no. / period",w:30},{h:"Mode",w:22},{h:"Amount",w:20,r:1}],
-    rows:list.length?[...list.map(x=>({cells:["V-"+pad(x.seq),fmtDate(x.date),exHeadText(x),x.party||"-",[x.bill,x.period].filter(Boolean).join(" / ")||"-",x.method+(x.ref?" "+x.ref:""),inr(x.amount)]})),
+    rows:list.length?[...list.map(x=>({cells:["V-"+pad(x.seq),fmtDate(x.date),exHeadText(x),x.party||"-",[x.bill,x.period].filter(Boolean).join(" / ")||"-",modeText(x),inr(x.amount)]})),
       {bold:true,fill:[223,242,232],cells:["","","TOTAL","","","",inr(total)]}]:[{cells:["","","No expenses in this period","","","",""]}]});
   // photos
   if(withPhotos){
@@ -2118,7 +2172,8 @@ function auditNumbers(fy){
   const income={}; rc.forEach(r=>itemsOf(r).forEach(i=>{ const k=INCOME_LABELS[i.k]?i.k:"other"; income[k]=(income[k]||0)+i.amount; }));
   const spend={}; ex.forEach(x=>{ const h=exHeadText(x).replace(/^Other: .*/,"Other"); spend[h]=(spend[h]||0)+x.amount; });
   const tIn=rc.reduce((s,r)=>s+(Number(r.amount)||0),0), tOut=ex.reduce((s,x)=>s+x.amount,0), open=Number((cfg.openBal||{})[fy])||0;
-  return {from,to,rc,ex,income,spend,tIn,tOut,open,close:open+tIn-tOut};
+  const pays=paymentsOut(from,to), cashOut=pays.reduce((s,o)=>s+o.amount,0), owed=owedAsOf(to);
+  return {from,to,rc,ex,income,spend,tIn,tOut,open,pays,cashOut,owed,owedSum:owed.reduce((s,x)=>s+x.amount,0),close:open+tIn-cashOut};
 }
 function renderReports(){
   const sel=$("auFY"), k=sel.value, fys=fyList();
@@ -2126,7 +2181,7 @@ function renderReports(){
   const n=auditNumbers(sel.value);
   if(document.activeElement!==$("auOpen")) $("auOpen").value=n.open||"";
   $("auOpen").disabled=ROLE!=="admin";
-  $("auStats").innerHTML=`<span>Collected <b>Rs. ${inr(n.tIn)}</b></span><span>Spent <b>Rs. ${inr(n.tOut)}</b></span><span>Closing balance <b>Rs. ${inr(n.close)}</b></span><span>Receipts <b>${n.rc.length}</b></span><span>Vouchers <b>${n.ex.length}</b></span>`;
+  $("auStats").innerHTML=`<span>Collected <b>Rs. ${inr(n.tIn)}</b></span><span>Spent <b>Rs. ${inr(n.tOut)}</b></span>${n.owedSum?`<span>Owed to members <b style="color:var(--danger)">Rs. ${inr(n.owedSum)}</b></span>`:""}<span>Closing balance <b>Rs. ${inr(n.close)}</b></span><span>Receipts <b>${n.rc.length}</b></span><span>Vouchers <b>${n.ex.length}</b></span>`;
 }
 $("auFY").addEventListener("change",renderReports);
 $("auOpen").addEventListener("change",()=>{ if(ROLE!=="admin") return; cfg.openBal={...(cfg.openBal||{}),[$("auFY").value]:Math.round(Number($("auOpen").value)||0)}; persist(); renderReports(); setMsg($("auMsg"),"ok","Opening balance saved."); });
@@ -2154,27 +2209,30 @@ async function buildAudit(fy,withPhotos){
   y=T(y,[{h:"Summary",w:136},{h:"Rs.",w:50,r:1}],[
     {cells:["Opening balance (cash + bank) on "+fmtDate(from),inr(n.open)]},
     {cells:[`Add: collected from members (${rc.length} receipts)`,inr(n.tIn)]},
-    {cells:[`Less: expenses paid (${ex.length} vouchers)`,inr(n.tOut)]},
+    {cells:[`Less: paid out (expenses paid by D building + repayments to members)`,inr(n.cashOut)]},
     tot(["Closing balance on "+fmtDate(to),inr(n.close)]),
-    {cells:[n.tIn>=n.tOut?"Surplus for the year":"Deficit for the year",inr(Math.abs(n.tIn-n.tOut))]}]);
+    {cells:[n.tIn>=n.tOut?"Surplus for the year (income less all expenses)":"Deficit for the year (income less all expenses)",inr(Math.abs(n.tIn-n.tOut))]},
+    ...(n.owedSum?[{fill:[253,240,238],cells:[`Still owed to members on ${fmtDate(to)} (paid on D building's behalf)`,inr(n.owedSum)]}]:[])]);
   y=section(y+7,"Income (collections by type)");
   const incRows=Object.keys(INCOME_LABELS).filter(k=>n.income[k]).map(k=>({cells:[INCOME_LABELS[k],inr(n.income[k])]}));
   y=T(y,[{h:"Income head",w:136},{h:"Rs.",w:50,r:1}],[...(incRows.length?incRows:[{cells:["No collections",""]}]),tot(["Total income",inr(n.tIn)])]);
   y=section(y+7,"Expenditure (by head)");
   const spRows=Object.keys(n.spend).sort().map(h=>({cells:[h,inr(n.spend[h])]}));
   y=T(y,[{h:"Expense head",w:136},{h:"Rs.",w:50,r:1}],[...(spRows.length?spRows:[{cells:["No expenses",""]}]),tot(["Total expenditure",inr(n.tOut)])]);
+  if(n.owed.length){ y=section(y+7,"Owed to members (paid from their own account, not yet repaid)");
+    y=T(y,[{h:"Voucher",w:20},{h:"Date",w:22},{h:"Member",w:46},{h:"Expense",w:72},{h:"Rs.",w:26,r:1}],[...n.owed.map(x=>({cells:["V-"+pad(x.seq),fmtDate(x.date),`${x.payerFlat} ${x.payerName||""}`,exHeadText(x),inr(x.amount)]})),tot(["","","","Total owed",inr(n.owedSum)])]); }
   y=section(y+7,"Payment modes");
   const mode=(arr,m)=>arr.filter(x=>x.method===m).reduce((s,x)=>s+(Number(x.amount)||0),0), cnt=(arr,m)=>arr.filter(x=>x.method===m).length;
   y=T(y,[{h:"Mode",w:46},{h:"Received (count)",w:30,r:1},{h:"Received Rs.",w:40,r:1},{h:"Paid (count)",w:30,r:1},{h:"Paid Rs.",w:40,r:1}],
-    ["Cash","Online","Cheque"].map(m=>({cells:[m,cnt(rc,m),inr(mode(rc,m)),cnt(ex,m),inr(mode(ex,m))]})));
+    ["Cash","Online","Cheque","Adjusted"].map(m=>({cells:[m,cnt(rc,m),inr(mode(rc,m)),cnt(ex,m),inr(mode(ex,m))]})).filter(r=>r.cells[1]||r.cells[3]).concat(cnt(ex,"Member")?[{cells:["Paid by members",0,"0",cnt(ex,"Member"),inr(mode(ex,"Member"))]}]:[]));
 
   // ---- month-wise receipts & payments ----
   doc.addPage(); y=head("RECEIPTS & PAYMENTS"); y=section(y,"Month-wise receipts and payments");
   let bal=n.open; const mrows=[];
   for(let i=0;i<12;i++){ const d=new Date(Number(fy.slice(0,4)),3+i,1), key=isoOf(d).slice(0,7);
-    const a=rc.filter(r=>r.date.slice(0,7)===key).reduce((s,r)=>s+(Number(r.amount)||0),0), b=ex.filter(x=>x.date.slice(0,7)===key).reduce((s,x)=>s+x.amount,0); bal+=a-b;
+    const a=rc.filter(r=>r.date.slice(0,7)===key).reduce((s,r)=>s+(Number(r.amount)||0),0), b=n.pays.filter(o=>o.date.slice(0,7)===key).reduce((s,o)=>s+o.amount,0); bal+=a-b;
     mrows.push({cells:[`${MONTHS[d.getMonth()]} ${d.getFullYear()}`,inr(a),inr(b),inr(a-b),inr(bal)]}); }
-  y=T(y,[{h:"Month",w:40},{h:"Collected",w:36,r:1},{h:"Spent",w:36,r:1},{h:"Net",w:34,r:1},{h:"Balance",w:40,r:1}],[{cells:["Opening","","","",inr(n.open)]},...mrows,tot(["Total",inr(n.tIn),inr(n.tOut),inr(n.tIn-n.tOut),inr(n.close)])],"RECEIPTS & PAYMENTS");
+  y=T(y,[{h:"Month",w:40},{h:"Collected",w:36,r:1},{h:"Spent",w:36,r:1},{h:"Net",w:34,r:1},{h:"Balance",w:40,r:1}],[{cells:["Opening","","","",inr(n.open)]},...mrows,tot(["Total",inr(n.tIn),inr(n.cashOut),inr(n.tIn-n.cashOut),inr(n.close)])],"RECEIPTS & PAYMENTS");
 
   // ---- maintenance dues ----
   const pers=periods().filter(p=>{ const s=isoOf(p.start); return s>=from&&s<=to&&s<=todayISO(); });
@@ -2200,7 +2258,7 @@ async function buildAudit(fy,withPhotos){
 
   // ---- expense register ----
   doc.addPage(); y=head("EXPENSE REGISTER"); y=section(y,"Expense register");
-  const erows=[...ex].sort((a,b)=>a.date.localeCompare(b.date)||a.seq-b.seq).map(x=>({cells:["V-"+pad(x.seq),fmtDate(x.date),exHeadText(x),x.party||"-",x.bill||"-",x.method+(x.ref?" "+x.ref:""),(x.files||[]).length?"Yes":"No",inr(x.amount)]}));
+  const erows=[...ex].sort((a,b)=>a.date.localeCompare(b.date)||a.seq-b.seq).map(x=>({cells:["V-"+pad(x.seq),fmtDate(x.date),exHeadText(x),x.party||"-",x.bill||"-",modeText(x),(x.files||[]).length?"Yes":"No",inr(x.amount)]}));
   y=T(y,[{h:"Voucher",w:16},{h:"Date",w:18},{h:"Head",w:42},{h:"Paid to",w:32},{h:"Bill no.",w:20},{h:"Mode",w:22},{h:"Bill",w:12},{h:"Amount",w:24,r:1}],[...(erows.length?erows:[{cells:["","","No expenses","","","","",""]}]),tot(["","","TOTAL","","","","",inr(n.tOut)])],"EXPENSE REGISTER");
 
   // ---- complaints ----
@@ -2254,7 +2312,7 @@ function receiptForPeriod(m,p){
 function floorOf(flat){ const n=String(flat).match(/(\d+)/); return n?Math.floor(Number(n[1])/100):0; }
 function buildingOf(flat){ const b=String(flat).match(/^\s*([A-Za-z]+)/); return b?b[1].toUpperCase():""; }
 const ordinal=n=>n===0?"Ground":n+(n%100>=11&&n%100<=13?"th":({1:"st",2:"nd",3:"rd"}[n%10]||"th"));
-function modeWord(r){ if(r.method==="Cash") return "paid cash"; if(r.method==="Cheque") return `cheque${r.chqNo?" "+r.chqNo:""}`; return "online"; }
+function modeWord(r){ if(r.method==="Cash") return "paid cash"; if(r.method==="Adjusted") return "paid (adjusted)"; if(r.method==="Cheque") return `cheque${r.chqNo?" "+r.chqNo:""}`; return "online"; }
 function statusMessage(p,withSum){
   const list=[...members].sort(flatSort), lines=[], paid=[], pending=[]; let total=0;
   const blds=[...new Set(list.map(m=>buildingOf(m.flatNo)))];
