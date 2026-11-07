@@ -1852,7 +1852,7 @@ const CLOUD={on:false, setup:null, user:null, email:"", roles:null, started:fals
 let ROLE="admin", fdb=null, fauth=null;
 try{ CLOUD.setup=JSON.parse(localStorage.getItem(CLOUD_KEY)||"null"); }catch(e){ CLOUD.setup=null; }
 /* built-in connection (like the challan app's config.js): members just open the link */
-const BUILTIN={"config": {"apiKey": "AIzaSyDGeAVzR8TPZbGxzZHl2YY_E9HCFjJS0YA", "authDomain": "stuti-avenue.firebaseapp.com", "projectId": "stuti-avenue", "storageBucket": "stuti-avenue.firebasestorage.app", "messagingSenderId": "88973744729", "appId": "1:88973744729:web:47ff1b1db44910ee04af48"}, "admin": "stutiavenuetp14@gmail.com", "entry": ["stutiavenue_1@gmail.com", "stutiavenue_2@gmail.com", "stutiavenue_3@gmail.com"]};
+const BUILTIN={"config": {"apiKey": "AIzaSyDGeAVzR8TPZbGxzZHl2YY_E9HCFjJS0YA", "authDomain": "stuti-avenue.firebaseapp.com", "projectId": "stuti-avenue", "storageBucket": "stuti-avenue.firebasestorage.app", "messagingSenderId": "88973744729", "appId": "1:88973744729:web:47ff1b1db44910ee04af48"}, "admin": "stutiavenuetp14@gmail.com", "entry": ["stutiavenuesamir@gmail.com", "stutiavenuejigar@gmail.com"]};
 if(BUILTIN && BUILTIN.config && BUILTIN.admin && !(CLOUD.setup && CLOUD.setup.local)) CLOUD.setup={config:BUILTIN.config,setupAdmin:BUILTIN.admin};
 // invite link: #join=<base64 config>
 (function(){
@@ -1926,6 +1926,8 @@ function watchRoles(){
     const r=s.data(); CLOUD.roles=r;
     const role= CLOUD.email===lc(r.admin)?"admin" : (r.entry||[]).map(lc).includes(CLOUD.email)?"entry" : (r.viewers||[]).map(lc).includes(CLOUD.email)?"viewer" : null;
     if(!role){ notRegistered(); return; }
+    if(role==="admin" && BUILTIN && Array.isArray(BUILTIN.entry) && (r.entry||[]).some(e=>/^stutiavenue_\d@gmail\.com$/.test(lc(e)))){
+      fdb.doc("meta/roles").set({...r,entry:BUILTIN.entry}).catch(err=>cloudError(err)); }
     setRole(role); $("acRole").textContent=role==="admin"?"Admin (can edit)":role==="entry"?"Data entry":"Member (view only)";
     ungate(); startListeners(); renderOnline();
   }, err=>notRegistered());
