@@ -176,11 +176,12 @@ function render() {
   const L = $('ledger');
   if (!S.loaded.e) { L.innerHTML = '<div class="empty"><strong>Opening your cash book…</strong></div>'; return; }
   const acctName = S.acct === 'cash' ? 'cash' : S.acct === 'all' ? 'balance (all)' : S.acct + ' A/c';
-  let html = `<div class="edge num"><span>Opening ${acctName}</span><b>${fmt(C.opening)}</b></div>`;
+  // Newest first: closing balance on top, opening balance at the bottom.
+  let html = `<div class="edge num"><span>Closing ${acctName}</span><b>${fmt(C.closing)}</b></div>`;
   if (!C.rows.length) {
     html += `<div class="empty"><strong>No entries ${S.q || S.cat ? 'match these filters' : 'in this period'}</strong>${isEntry ? 'Use the buttons above to add cash or online payments.' : 'Entries Javed adds will show here.'}</div>`;
   } else {
-    const groups = []; for (const r of C.rows) { const g = groups[groups.length - 1]; if (g && g.date === r.e.date) g.rows.push(r); else groups.push({date: r.e.date, rows: [r]}); }
+    const groups = []; for (const r of [...C.rows].reverse()) { const g = groups[groups.length - 1]; if (g && g.date === r.e.date) g.rows.push(r); else groups.push({date: r.e.date, rows: [r]}); }
     for (const g of groups) {
       let di = 0, dout = 0; g.rows.forEach(r => { if (r.delta > 0) di += r.delta; else if (r.delta < 0) dout -= r.delta; });
       html += `<div class="day"><div class="dayhead"><h3>${esc(dayLabel(g.date))}</h3><span class="dt num">${di ? `<span class="i">+${fmt(di)}</span>` : ''}${di && dout ? ' · ' : ''}${dout ? `<span class="o">−${fmt(dout)}</span>` : ''}</span></div>`;
@@ -196,7 +197,7 @@ function render() {
       html += '</div>';
     }
   }
-  html += `<div class="edge num" style="border-top:1px solid var(--line)"><span>Closing ${acctName}</span><b>${fmt(C.closing)}</b></div>`;
+  html += `<div class="edge num" style="border-top:1px solid var(--line)"><span>Opening ${acctName}</span><b>${fmt(C.opening)}</b></div>`;
   L.innerHTML = html;
 }
 function renderApprovals() {
