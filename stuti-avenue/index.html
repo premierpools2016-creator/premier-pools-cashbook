@@ -95,6 +95,7 @@ td.flat input{width:80px;font-family:var(--mono)}
 .stats b{color:var(--ink);font-family:var(--mono)}
 .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
 .empty{padding:28px;text-align:center;color:var(--muted)}
+.idlogin{display:grid;gap:8px;margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)}
 .pingate{z-index:70}
 .pinbox{font:600 24px var(--mono);letter-spacing:.5em;text-align:center;padding:12px;max-width:240px;margin:0 auto}
 .repay{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:8px;padding:10px;border:1px dashed var(--line);border-radius:8px;background:var(--bg)}
@@ -680,6 +681,14 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
           <button class="btn ghost" type="button" id="olRules2">Copy security rules</button>
         </div>
         <div class="msg" id="olMsg2" role="status"></div>
+        <div class="ledger" style="margin-top:14px">
+          <div class="lgtext"><b>Login IDs for data entry</b><span>Make an ID and password for a person who will not use Gmail. On the sign-in screen they type it under "Login with ID". They get data-entry rights.</span></div>
+          <label>Login ID<input id="lgNewId" placeholder="e.g. samir" autocapitalize="none" autocomplete="off"></label>
+          <label>Password (at least 6)<input id="lgNewPw" autocomplete="off" autocapitalize="none"></label>
+          <div class="lgbtns"><button class="btn" type="button" id="lgNewGo">Create login</button></div>
+          <div id="lgNewList" style="flex:1 1 100%"></div>
+          <div class="msg" id="lgNewMsg" role="status" style="flex:1 1 100%"></div>
+        </div>
         <details class="more"><summary>Stop using online sharing on this phone</summary>
           <p class="hint">This phone goes back to its own offline records. Nothing online is deleted.</p>
           <button class="btn danger small" type="button" id="olOff">Disconnect this phone</button>
@@ -1864,7 +1873,7 @@ const CLOUD={on:false, setup:null, user:null, email:"", roles:null, started:fals
 let ROLE="admin", fdb=null, fauth=null;
 try{ CLOUD.setup=JSON.parse(localStorage.getItem(CLOUD_KEY)||"null"); }catch(e){ CLOUD.setup=null; }
 /* built-in connection (like the challan app's config.js): members just open the link */
-const BUILTIN={"config": {"apiKey": "AIzaSyDGeAVzR8TPZbGxzZHl2YY_E9HCFjJS0YA", "authDomain": "stuti-avenue.firebaseapp.com", "projectId": "stuti-avenue", "storageBucket": "stuti-avenue.firebasestorage.app", "messagingSenderId": "88973744729", "appId": "1:88973744729:web:47ff1b1db44910ee04af48"}, "admin": "stutiavenuetp14@gmail.com", "entry": ["stutiavenuesamir@gmail.com", "stutiavenuejigar@gmail.com"]};
+const BUILTIN={"config": {"apiKey": "AIzaSyDGeAVzR8TPZbGxzZHl2YY_E9HCFjJS0YA", "authDomain": "stuti-avenue.firebaseapp.com", "projectId": "stuti-avenue", "storageBucket": "stuti-avenue.firebasestorage.app", "messagingSenderId": "88973744729", "appId": "1:88973744729:web:47ff1b1db44910ee04af48"}, "admin": "stutiavenuetp14@gmail.com", "entry": []};
 if(BUILTIN && BUILTIN.config && BUILTIN.admin && !(CLOUD.setup && CLOUD.setup.local)) CLOUD.setup={config:BUILTIN.config,setupAdmin:BUILTIN.admin};
 // invite link: #join=<base64 config>
 (function(){
@@ -1918,8 +1927,13 @@ async function startCloud(){
   fauth=firebase.auth(); fauth.getRedirectResult().catch(err=>{ $("gMsg").textContent="Sign-in failed: "+err.message; });
   fauth.onAuthStateChanged(u=>{
     CLOUD.user=u; CLOUD.email=u?lc(u.email):"";
-    if(!u){ gate("Sign in",`Sign in with the Gmail address registered for your flat in <b>${esc(cfg.name)}</b>.`,[{label:"Sign in with Google",fn:signIn}]); return; }
-    $("acct").hidden=false; $("acct").innerHTML=`Signed in as <b>${esc(u.email)}</b> · <span id="acRole"></span> · <button type="button" class="linkbtn" id="acPin"></button> · <button type="button" class="linkbtn" id="acOut">Sign out</button>`;
+    if(!u){ gate("Sign in",`Sign in with the Gmail address registered for your flat in <b>${esc(cfg.name)}</b>.
+      <div class="idlogin"><div class="eyebrow">Or, if the admin gave you a login ID</div>
+      <input id="liId" placeholder="Login ID, e.g. samir" autocapitalize="none" autocomplete="username">
+      <input id="liPw" type="password" placeholder="Password" autocomplete="current-password">
+      <button class="btn ghost" type="button" id="liGo">Login with ID</button></div>`,[{label:"Sign in with Google",fn:signIn}]); return; }
+    $("acct").hidden=false; $("acct").innerHTML=`Signed in as <b>${esc(shortName(u.email))}</b>${isLoginEmail(u.email)?` · <button type="button" class="linkbtn" id="acPwd">Change password</button>`:""} · <span id="acRole"></span> · <button type="button" class="linkbtn" id="acPin"></button> · <button type="button" class="linkbtn" id="acOut">Sign out</button>`;
+    if($("acPwd")) $("acPwd").onclick=changePassword;
     $("acOut").onclick=()=>{ clearPin(); signOut(); }; pinLabel(); $("acPin").onclick=()=>pinScreen(myPin()?"manage":"set"); if(myPin()) pinScreen("unlock"); watchRoles();
   });
 }
@@ -2074,7 +2088,7 @@ function rulesText(admin){
   return `rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() { return request.auth != null && request.auth.token.email_verified == true; }
+    function signedIn() { return request.auth != null && (request.auth.token.email_verified == true || (request.auth.token.firebase.sign_in_provider == 'password' && request.auth.token.email.matches('^[a-z0-9._-]+@login[.]stuti-avenue[.]web[.]app$'))); }
     function email() { return request.auth.token.email.lower(); }
     function isAdmin() { return signedIn() && email() == '${A}'; }
     function rolesPath() { return /databases/$(database)/documents/meta/roles; }
@@ -2113,7 +2127,7 @@ function renderOnline(){
   if(!CLOUD.on){ if(!$("olAdmin").value) $("olAdmin").value=""; return; }
   const r=CLOUD.roles||{}; $("olWho").innerHTML=`Admin (the only person who can edit or delete): <b>${esc(r.admin||"")}</b>`;
   if(document.activeElement?.closest?.("#olCloud")) return;
-  [0,1,2].forEach(i=>$("olE"+(i+1)).value=(r.entry||[])[i]||""); $("olX").value=(r.extra||[]).join("\n");
+  const gm=(r.entry||[]).filter(e=>!isLoginEmail(e)); [0,1,2].forEach(i=>$("olE"+(i+1)).value=gm[i]||""); renderLogins(); $("olX").value=(r.extra||[]).join("\n");
   const noMail=members.filter(m=>!m.email).map(m=>m.flatNo);
   $("olViewers").innerHTML=`Members who can view: <b>${(r.viewers||[]).length}</b> Gmail addresses (taken from the email column in Members, plus extra viewers).${noMail.length?` <span style="color:var(--danger)">No email yet for: ${esc(noMail.join(", "))}.</span>`:""}`;
 }
@@ -2126,7 +2140,7 @@ $("olConnect").addEventListener("click",()=>{
   localStorage.setItem(CLOUD_KEY,JSON.stringify({config:c,setupAdmin:a})); location.reload();
 });
 $("olSave").addEventListener("click",()=>{
-  const entry=[$("olE1").value,$("olE2").value,$("olE3").value].map(lc).filter(Boolean);
+  const entry=[...[$("olE1").value,$("olE2").value,$("olE3").value].map(lc).filter(Boolean), ...((CLOUD.roles&&CLOUD.roles.entry)||[]).filter(isLoginEmail)];
   const bad=entry.find(e=>!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)); if(bad){ setMsg($("olMsg2"),"err",`"${bad}" is not a valid email.`); return; }
   const extra=$("olX").value.split(/[\n,]/).map(lc).filter(Boolean);
   const r={...CLOUD.roles,entry,extra}; CLOUD.roles=r; fdb.doc("meta/roles").set(r).then(()=>{ syncViewers(); setMsg($("olMsg2"),"ok","Access saved."); }).catch(err=>setMsg($("olMsg2"),"err",err.message));
@@ -2438,6 +2452,59 @@ document.addEventListener("visibilitychange",()=>{
   if(document.visibilityState==="hidden"){ pinHiddenAt=Date.now(); return; }
   if(myPin() && pinHiddenAt && Date.now()-pinHiddenAt>3*60*1000){ pinUnlocked=false; pinScreen("unlock"); }
 });
+
+/* ---------- login ID + password (accounts the admin creates) ---------- */
+const LOGIN_DOMAIN="login.stuti-avenue.web.app";
+const isLoginEmail=e=>String(e||"").toLowerCase().endsWith("@"+LOGIN_DOMAIN);
+const loginEmail=id=>lc(id)+"@"+LOGIN_DOMAIN;
+const shortName=e=>isLoginEmail(e)?String(e).split("@")[0]:e;
+document.addEventListener("click",async e=>{
+  if(e.target.id!=="liGo") return;
+  const id=lc($("liId").value), pw=$("liPw").value;
+  if(!id||!pw){ $("gMsg").textContent="Enter your login ID and password."; return; }
+  e.target.disabled=true; $("gMsg").textContent="";
+  try{ await fauth.signInWithEmailAndPassword(id.includes("@")?id:loginEmail(id),pw); }
+  catch(err){ $("gMsg").textContent=["auth/wrong-password","auth/user-not-found","auth/invalid-credential","auth/invalid-login-credentials","auth/invalid-email"].includes(err.code)?"Wrong login ID or password.":err.code==="auth/too-many-requests"?"Too many tries. Wait a few minutes and try again.":"Login failed: "+err.message; }
+  finally{ e.target.disabled=false; }
+});
+document.addEventListener("keydown",e=>{ if(e.key==="Enter" && (e.target.id==="liPw"||e.target.id==="liId")) $("liGo").click(); });
+function renderLogins(){
+  const box=$("lgNewList"); if(!box) return; const ls=((CLOUD.roles&&CLOUD.roles.entry)||[]).filter(isLoginEmail);
+  box.innerHTML=ls.length?`<div class="muted" style="margin-bottom:4px">Login IDs with data-entry access:</div>`+ls.map(e=>`<div class="crow" style="align-items:center;padding:4px 0;border-bottom:1px dashed var(--line)"><b class="num">${esc(shortName(e))}</b><button class="btn danger small" type="button" data-lgrm="${esc(e)}">Remove access</button></div>`).join(""):`<div class="muted">No login IDs yet.</div>`;
+}
+$("lgNewGo").addEventListener("click",async()=>{
+  const id=lc($("lgNewId").value), pw=$("lgNewPw").value, msg=$("lgNewMsg");
+  if(!/^[a-z0-9._-]{3,20}$/.test(id)){ setMsg(msg,"err","Login ID: 3 to 20 small letters or numbers, no spaces (e.g. samir)."); return; }
+  if(pw.length<6){ setMsg(msg,"err","Password must be at least 6 characters."); return; }
+  const email=loginEmail(id); $("lgNewGo").disabled=true; setMsg(msg,"","Creating…");
+  try{
+    const app2=firebase.apps.find(a=>a.name==="creator")||firebase.initializeApp(CLOUD.setup.config,"creator");
+    try{ await app2.auth().createUserWithEmailAndPassword(email,pw); }
+    catch(err){ if(err.code==="auth/email-already-in-use"){ setMsg(msg,"err",`The ID "${id}" already exists. Choose another ID, e.g. ${id}2.`); return; } throw err; }
+    await app2.auth().signOut().catch(()=>{});
+    const r={...(CLOUD.roles||{})}; r.entry=[...new Set([...(r.entry||[]),email])]; await fdb.doc("meta/roles").set(r); CLOUD.roles=r;
+    $("lgNewId").value=""; $("lgNewPw").value=""; renderLogins();
+    const t=`${cfg.name} app\nLink: ${location.origin+location.pathname}\nLogin ID: ${id}\nPassword: ${pw}\nOpen the link, type these under "Login with ID", then tap Set PIN.`;
+    msg.className="msg ok"; msg.innerHTML=`Login created: <b>${esc(id)}</b>. <a class="btn wa small" href="https://wa.me/?text=${encodeURIComponent(t)}" target="_blank" rel="noopener">Send ID & password on WhatsApp</a>`;
+  }catch(err){ setMsg(msg,"err","Could not create the login: "+(err.message||err)); }
+  finally{ $("lgNewGo").disabled=false; }
+});
+document.addEventListener("click",async e=>{
+  const em=e.target.dataset&&e.target.dataset.lgrm; if(!em) return;
+  if(!e.target.dataset.armed){ e.target.dataset.armed="1"; e.target.textContent="Confirm remove"; return; }
+  const r={...(CLOUD.roles||{})}; r.entry=(r.entry||[]).filter(x=>x!==em);
+  try{ await fdb.doc("meta/roles").set(r); CLOUD.roles=r; renderLogins(); setMsg($("lgNewMsg"),"ok",`Access removed for ${shortName(em)}.`); }catch(err){ setMsg($("lgNewMsg"),"err",err.message); }
+});
+function changePassword(){
+  gate("Change password",`Signed in as <b>${esc(shortName(CLOUD.email))}</b>.<div class="idlogin"><input id="cpOld" type="password" placeholder="Current password" autocomplete="current-password"><input id="cpNew" type="password" placeholder="New password (at least 6)" autocomplete="new-password"><input id="cpNew2" type="password" placeholder="Repeat new password" autocomplete="new-password"></div>`,
+    [{label:"Save password",fn:async()=>{
+      const o=$("cpOld").value, n=$("cpNew").value, n2=$("cpNew2").value;
+      if(n.length<6){ $("gMsg").textContent="New password must be at least 6 characters."; return; }
+      if(n!==n2){ $("gMsg").textContent="The new passwords don't match."; return; }
+      try{ const u=fauth.currentUser; await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email,o)); await u.updatePassword(n); ungate(); setMsg($("rMsg"),"ok","Password changed."); }
+      catch(err){ $("gMsg").textContent=["auth/wrong-password","auth/invalid-credential","auth/invalid-login-credentials"].includes(err.code)?"Current password is wrong.":"Could not change: "+err.message; }
+    }},{label:"Cancel",ghost:true,fn:ungate}]);
+}
 /* ---------- local storage + backup ---------- */
 const KEY="stuti-avenue-receipts-v1", META="stuti-avenue-receipts-meta";
 const SEED={"config": {"address": "RESIDANCY SERVAY NO 367, PLOT NO. 327, OPP SOMCHINTAMANI APPT, TP 14, SURAT 395009", "cycle": "apr", "dueDays": 15, "extras": {"entry": 0, "flattx": 0, "nonocc": 0, "other": 0, "parking": 0, "repair": 0, "sharetx": 0, "sinking": 0}, "fmt": "plain", "name": "STUTI AVENUE CO. OP. HOUSING SOCIETY LTD D BLDG", "penaltyRate": 10, "prefix": "SA", "reg": "SRT/S 7124/ DT. 22/11/2012", "rentRate": 1700, "secretary": "", "selfRate": 1400, "startSeq": 1, "treasurer": ""}, "members": [{"id": "f02", "flatNo": "D-102", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f03", "flatNo": "D-103", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f04", "flatNo": "D-104", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f05", "flatNo": "D-201", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f06", "flatNo": "D-202", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f07", "flatNo": "D-203", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f08", "flatNo": "D-204", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f09", "flatNo": "D-301", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f10", "flatNo": "D-302", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f11", "flatNo": "D-303", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f12", "flatNo": "D-304", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f13", "flatNo": "D-401", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f14", "flatNo": "D-402", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f15", "flatNo": "D-403", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f17", "flatNo": "D-501", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f18", "flatNo": "D-502", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f19", "flatNo": "D-503", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f20", "flatNo": "D-504", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrpbvq1", "flatNo": "D-101", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrqe8qi", "flatNo": "D-404", "name": "", "mobile": "", "email": "", "occ": "self"}], "receipts": []};
