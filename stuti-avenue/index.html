@@ -95,6 +95,8 @@ td.flat input{width:80px;font-family:var(--mono)}
 .stats b{color:var(--ink);font-family:var(--mono)}
 .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
 .empty{padding:28px;text-align:center;color:var(--muted)}
+.pingate{z-index:70}
+.pinbox{font:600 24px var(--mono);letter-spacing:.5em;text-align:center;padding:12px;max-width:240px;margin:0 auto}
 .repay{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:8px;padding:10px;border:1px dashed var(--line);border-radius:8px;background:var(--bg)}
 .repay label{flex:1 1 130px}
 .role-entry [data-exrepay],.role-viewer [data-exrepay]{display:none!important}
@@ -519,6 +521,16 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
 
   <!-- SIGN-IN GATE -->
   <div id="gate" class="gate" hidden><div class="gcard"><div class="eyebrow">Stuti Avenue society app</div><h2 id="gTitle"></h2><p id="gText"></p><div class="links" id="gBtns"></div><div class="msg err" id="gMsg" role="status"></div></div></div>
+
+  <!-- PIN LOCK -->
+  <div id="pinGate" class="gate pingate" hidden><div class="gcard">
+    <div class="eyebrow">Stuti Avenue society app</div>
+    <h2 id="pnTitle"></h2><p id="pnText"></p>
+    <input id="pnA" class="pinbox" type="password" inputmode="numeric" maxlength="6" autocomplete="off" aria-label="PIN">
+    <input id="pnB" class="pinbox" type="password" inputmode="numeric" maxlength="6" autocomplete="off" aria-label="Repeat PIN" placeholder="Repeat PIN" hidden>
+    <div class="links" id="pnBtns"></div>
+    <div class="msg err" id="pnMsg" role="status"></div>
+  </div></div>
 
   <!-- FILE VIEWER -->
   <div id="viewer" class="viewer" hidden>
@@ -1907,8 +1919,8 @@ async function startCloud(){
   fauth.onAuthStateChanged(u=>{
     CLOUD.user=u; CLOUD.email=u?lc(u.email):"";
     if(!u){ gate("Sign in",`Sign in with the Gmail address registered for your flat in <b>${esc(cfg.name)}</b>.`,[{label:"Sign in with Google",fn:signIn}]); return; }
-    $("acct").hidden=false; $("acct").innerHTML=`Signed in as <b>${esc(u.email)}</b> · <span id="acRole"></span> · <button type="button" class="linkbtn" id="acOut">Sign out</button>`;
-    $("acOut").onclick=signOut; watchRoles();
+    $("acct").hidden=false; $("acct").innerHTML=`Signed in as <b>${esc(u.email)}</b> · <span id="acRole"></span> · <button type="button" class="linkbtn" id="acPin"></button> · <button type="button" class="linkbtn" id="acOut">Sign out</button>`;
+    $("acOut").onclick=()=>{ clearPin(); signOut(); }; pinLabel(); $("acPin").onclick=()=>pinScreen(myPin()?"manage":"set"); if(myPin()) pinScreen("unlock"); watchRoles();
   });
 }
 let rolesUnsub=null;
@@ -2378,6 +2390,54 @@ function startEdit(no){
 }
 $("rEditCancel").addEventListener("click",()=>{ endEdit(); resetForm(); $("rMsg").textContent="Edit cancelled."; });
 document.addEventListener("click",e=>{ const no=e.target.dataset&&e.target.dataset.redit; if(no) startEdit(no); });
+
+/* ---------- personal PIN lock (after Google sign-in, per phone) ---------- */
+const PIN_KEY="stuti-avenue-pin";
+const pinAll=()=>{ try{ return JSON.parse(localStorage.getItem(PIN_KEY)||"{}"); }catch(e){ return {}; } };
+const pinSave=o=>{ try{ localStorage.setItem(PIN_KEY,JSON.stringify(o)); }catch(e){} };
+const myPin=()=>CLOUD.email?pinAll()[CLOUD.email]:null;
+function clearPin(){ const a=pinAll(); delete a[CLOUD.email]; pinSave(a); }
+async function pinHash(salt,pin){ const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(salt+"|"+pin)); return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join(""); }
+function pinLabel(){ const b=$("acPin"); if(b) b.textContent=myPin()?"PIN on":"Set PIN"; }
+let pinUnlocked=false, pinHiddenAt=0, pinMode="";
+function pinScreen(mode){
+  pinMode=mode; const g=$("pinGate"); g.hidden=false; $("pnMsg").textContent=""; $("pnA").value=""; $("pnB").value="";
+  const set=mode==="set"||mode==="change";
+  $("pnB").hidden=!set;
+  $("pnTitle").textContent= mode==="unlock"?"Enter your PIN": mode==="manage"?"Your PIN": "Set your PIN";
+  $("pnText").innerHTML= mode==="unlock"?`Signed in as <b>${esc(CLOUD.email)}</b>.`
+    : mode==="manage"?"This phone asks for your PIN each time the app opens."
+    : "Choose a 4 to 6 digit PIN. This phone will ask for it each time the app opens. Your Google sign-in stays as it is.";
+  $("pnA").hidden=mode==="manage";
+  const btn=(label,fn,cls="")=>{ const b=document.createElement("button"); b.type="button"; b.className="btn "+cls; b.textContent=label; b.onclick=fn; return b; };
+  const box=$("pnBtns"); box.innerHTML="";
+  if(mode==="unlock"){ box.append(btn("Unlock",pinUnlock), btn("Forgot PIN",()=>{ clearPin(); signOut(); },"ghost")); }
+  else if(mode==="manage"){ box.append(btn("Change PIN",()=>pinScreen("change")), btn("Remove PIN",()=>{ clearPin(); pinLabel(); g.hidden=true; },"danger"), btn("Close",()=>{ g.hidden=true; },"ghost")); }
+  else { box.append(btn("Save PIN",pinSet), btn("Cancel",()=>{ g.hidden=true; },"ghost")); }
+  if(!$("pnA").hidden) setTimeout(()=>$("pnA").focus(),50);
+}
+async function pinSet(){
+  const a=$("pnA").value.trim(), b=$("pnB").value.trim();
+  if(!/^\d{4,6}$/.test(a)){ $("pnMsg").textContent="Use 4 to 6 digits."; return; }
+  if(a!==b){ $("pnMsg").textContent="The two PINs don't match."; return; }
+  const salt=Math.random().toString(36).slice(2)+Date.now().toString(36);
+  const all=pinAll(); all[CLOUD.email]={salt,hash:await pinHash(salt,a),tries:0}; pinSave(all);
+  pinUnlocked=true; $("pinGate").hidden=true; pinLabel();
+}
+async function pinUnlock(){
+  const p=myPin(), v=$("pnA").value.trim(); if(!p){ $("pinGate").hidden=true; return; }
+  if(await pinHash(p.salt,v)===p.hash){ p.tries=0; const all=pinAll(); all[CLOUD.email]=p; pinSave(all); pinUnlocked=true; $("pinGate").hidden=true; return; }
+  p.tries=(p.tries||0)+1; const all=pinAll(); all[CLOUD.email]=p; pinSave(all); $("pnA").value="";
+  if(p.tries>=5){ clearPin(); $("pnMsg").textContent="Too many wrong tries. Sign in with Google again."; setTimeout(signOut,1500); return; }
+  $("pnMsg").textContent=`Wrong PIN. ${5-p.tries} tries left.`;
+}
+$("pnA").addEventListener("keydown",e=>{ if(e.key==="Enter"){ if(pinMode==="unlock") pinUnlock(); else $("pnB").focus(); } });
+$("pnB").addEventListener("keydown",e=>{ if(e.key==="Enter") pinSet(); });
+$("pnA").addEventListener("input",()=>{ if(pinMode==="unlock" && $("pnA").value.length>=4 && myPin()) pinUnlock().catch(()=>{}); });
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="hidden"){ pinHiddenAt=Date.now(); return; }
+  if(myPin() && pinHiddenAt && Date.now()-pinHiddenAt>3*60*1000){ pinUnlocked=false; pinScreen("unlock"); }
+});
 /* ---------- local storage + backup ---------- */
 const KEY="stuti-avenue-receipts-v1", META="stuti-avenue-receipts-meta";
 const SEED={"config": {"address": "RESIDANCY SERVAY NO 367, PLOT NO. 327, OPP SOMCHINTAMANI APPT, TP 14, SURAT 395009", "cycle": "apr", "dueDays": 15, "extras": {"entry": 0, "flattx": 0, "nonocc": 0, "other": 0, "parking": 0, "repair": 0, "sharetx": 0, "sinking": 0}, "fmt": "plain", "name": "STUTI AVENUE CO. OP. HOUSING SOCIETY LTD D BLDG", "penaltyRate": 10, "prefix": "SA", "reg": "SRT/S 7124/ DT. 22/11/2012", "rentRate": 1700, "secretary": "", "selfRate": 1400, "startSeq": 1, "treasurer": ""}, "members": [{"id": "f02", "flatNo": "D-102", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f03", "flatNo": "D-103", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f04", "flatNo": "D-104", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f05", "flatNo": "D-201", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f06", "flatNo": "D-202", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f07", "flatNo": "D-203", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f08", "flatNo": "D-204", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f09", "flatNo": "D-301", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f10", "flatNo": "D-302", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f11", "flatNo": "D-303", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f12", "flatNo": "D-304", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f13", "flatNo": "D-401", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f14", "flatNo": "D-402", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f15", "flatNo": "D-403", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f17", "flatNo": "D-501", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f18", "flatNo": "D-502", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f19", "flatNo": "D-503", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f20", "flatNo": "D-504", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrpbvq1", "flatNo": "D-101", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrqe8qi", "flatNo": "D-404", "name": "", "mobile": "", "email": "", "occ": "self"}], "receipts": []};

@@ -1,4 +1,4 @@
-const CACHE="stuti-receipts-v8";
+const CACHE="stuti-receipts-v9";
 const FILES=["./","./index.html","./manifest.webmanifest","./icon-192.png","./icon-512.png",
   "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"];
 self.addEventListener("install",e=>{ e.waitUntil(caches.open(CACHE).then(c=>Promise.all(FILES.map(u=>c.add(new Request(u,{mode:u.startsWith("http")?"no-cors":"same-origin"})).catch(()=>{}))))); self.skipWaiting(); });
