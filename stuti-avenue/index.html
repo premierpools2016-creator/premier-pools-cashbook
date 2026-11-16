@@ -95,6 +95,9 @@ td.flat input{width:80px;font-family:var(--mono)}
 .stats b{color:var(--ink);font-family:var(--mono)}
 .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
 .empty{padding:28px;text-align:center;color:var(--muted)}
+.rvwrap{position:fixed;inset:0;z-index:55;background:rgba(20,26,38,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:max(12px,env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
+.rvbox{background:var(--paper);border-radius:14px;max-width:560px;width:100%;padding:16px;display:grid;gap:12px;margin:auto 0}
+.rvnote{margin:0;font-size:13px;color:var(--muted)}
 .prtbl{min-width:620px}
 .prtbl td{font-size:13px}
 .prtbl td:first-child,.prtbl td.num{white-space:nowrap}
@@ -306,7 +309,7 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
         </div>
         <div class="total"><span id="calcLine">Rs. 1,400 × 6 months</span><strong id="amt">Rs. 8,400</strong></div>
         <div class="actions">
-          <button class="btn" type="submit" id="saveBtn">Save &amp; download PDF</button>
+          <button class="btn" type="submit" id="saveBtn">Verify &amp; save</button>
           <button class="btn ghost" type="button" id="resetBtn">Clear form</button>
         </div>
         <div class="msg" id="rMsg" role="status"></div>
@@ -607,6 +610,16 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
     <div class="links" id="pnBtns"></div>
     <div class="msg err" id="pnMsg" role="status"></div>
   </div></div>
+
+  <!-- RECEIPT CHECK -->
+  <div class="rvwrap" id="rvModal" hidden role="dialog" aria-modal="true" aria-labelledby="rvTitle">
+    <div class="rvbox">
+      <h2 id="rvTitle" style="margin:0">Check the receipt</h2>
+      <div class="sheet" id="rvSheet"></div>
+      <p class="rvnote" id="rvNote"></p>
+      <div class="links"><button class="btn" type="button" id="rvOk">Confirm &amp; save</button><button class="btn ghost" type="button" id="rvBack">Back to edit</button></div>
+    </div>
+  </div>
 
   <!-- FILE VIEWER -->
   <div id="viewer" class="viewer" hidden>
@@ -1026,11 +1039,12 @@ $("rForm").addEventListener("submit", async e=>{
     const old=receipts.find(r=>r.receiptNo===rEdit); if(!old){ msg.className="msg err"; msg.textContent="That receipt no longer exists."; endEdit(); return; }
     const rec={...old,...d,id:old.id||("r"+pad(old.seq,5)),seq:old.seq,receiptNo:old.receiptNo,createdAt:old.createdAt,by:old.by||"",editedAt:new Date().toISOString(),editedBy:CLOUD.on?CLOUD.email:""};
     ["txn","via","chqNo","chqDate","bank","branch"].forEach(k=>{ if(!(k in d)) delete rec[k]; });
+    if(!(await verifyReceipt(rec,true))){ msg.className="msg"; msg.textContent="Not saved. Make your changes and tap Verify & update again."; return; }
     $("saveBtn").disabled=true;
     try{
       receipts[receipts.indexOf(old)]=rec; persist(); renderHistory();
       msg.className="msg ok"; msg.textContent=`Receipt ${rec.receiptNo} updated.`;
-      await downloadPDF(rec,msg); if(msg.className.includes("ok")) msg.textContent=`Receipt ${rec.receiptNo} updated and PDF downloaded.`; endEdit(); resetForm(); showShare(rec);
+      endEdit(); resetForm(); showShare(rec);
     }catch(err){ msg.className="msg err"; msg.textContent="Could not update: "+(err.message||err.code); }
     finally{ $("saveBtn").disabled=false; }
     return;
@@ -1041,12 +1055,14 @@ $("rForm").addEventListener("submit", async e=>{
     msg.className="msg err"; msg.textContent=`Flat ${d.flatNo} already has receipt ${dup.receiptNo} with maintenance for this period. Press "Save anyway" to issue another.`;
     return;
   }
-  delete $("saveBtn").dataset.confirm; $("saveBtn").textContent="Save & download PDF";
+  delete $("saveBtn").dataset.confirm; $("saveBtn").textContent="Verify & save";
   const seq=Math.floor(Number($("rSeq").value));
   if(!seq || seq<1){ msg.className="msg err"; msg.textContent="Enter a receipt number of 1 or more."; return; }
   const taken=receipts.find(r=>Number(r.seq)===seq);
   if(taken){ msg.className="msg err"; msg.textContent=`Receipt no. ${seq} is already used (Flat ${taken.flatNo}, ${fmtDate(taken.date)}). Next free number is ${nextSeq()}.`; return; }
   const rec={...d, id:"r"+pad(seq,5), seq, receiptNo:receiptNoFor(seq,d.date), createdAt:new Date().toISOString(), by:CLOUD.on?CLOUD.email:""};
+  if(!(await verifyReceipt(rec,false))){ msg.className="msg"; msg.textContent="Not saved. Make your changes and tap Verify & save again."; return; }
+  if(receipts.some(r=>Number(r.seq)===seq)){ msg.className="msg err"; msg.textContent=`Receipt no. ${seq} was just used. Next free number is ${nextSeq()}.`; $("rSeq").value=nextSeq(); return; }
   $("saveBtn").disabled=true;
   try{
     receipts.push(rec); persist(); renderHistory();
@@ -1054,8 +1070,7 @@ $("rForm").addEventListener("submit", async e=>{
     if(m && ROLE==="admin" && (m.name!==d.name || m.mobile!==d.mobile || (m.email||"")!==d.email || m.occ!==d.occ)){
       Object.assign(m,{name:d.name,mobile:d.mobile,email:d.email,occ:d.occ}); persist(); fillMemberSelect(); if(!draftMembers) renderMembers();
     }
-    msg.className="msg ok"; msg.textContent=`Saved ${rec.receiptNo}.`;
-    await downloadPDF(rec, msg);
+    msg.className="msg ok"; msg.textContent=`Receipt ${rec.receiptNo} saved.`;
     resetForm(); showShare(rec);
   }catch(err){ msg.className="msg err"; msg.textContent="Could not save the receipt: "+(err.message||err.code); }
   finally{ $("saveBtn").disabled=false; }
@@ -2493,7 +2508,7 @@ function statusForReceipt(r){ const p=stPeriods().find(p=>{ const s=isoOf(p.star
 
 /* ---------- edit an issued receipt (admin) ---------- */
 let rEdit=null;
-function endEdit(){ rEdit=null; $("rEditBar").hidden=true; $("rSeq").disabled=false; $("saveBtn").textContent="Save & download PDF"; }
+function endEdit(){ rEdit=null; $("rEditBar").hidden=true; $("rSeq").disabled=false; $("saveBtn").textContent="Verify & save"; }
 function startEdit(no){
   const r=receipts.find(x=>x.receiptNo===no); if(!r) return;
   resetForm(); rEdit=no;
@@ -2511,7 +2526,7 @@ function startEdit(no){
   $("rChqNo").value=r.chqNo||""; $("rChqDate").value=r.chqDate||""; $("rBank").value=r.bank||""; $("rBranch").value=r.branch||"";
   $("rRemarks").value=r.remarks||"";
   $("rEditTxt").innerHTML=`Editing receipt <b>${esc(r.receiptNo)}</b> · Flat ${esc(r.flatNo)}. The receipt number stays the same.`;
-  $("rEditBar").hidden=false; $("saveBtn").textContent="Update & download PDF"; $("rMsg").textContent=""; $("shareBar").hidden=true;
+  $("rEditBar").hidden=false; $("saveBtn").textContent="Verify & update"; $("rMsg").textContent=""; $("shareBar").hidden=true;
   update(); goTab("receipt");
 }
 $("rEditCancel").addEventListener("click",()=>{ endEdit(); resetForm(); $("rMsg").textContent="Edit cancelled."; });
@@ -2984,6 +2999,29 @@ $("prDown").addEventListener("click",()=>periodGo(false));
 $("prShare").addEventListener("click",()=>periodGo(true));
 const _prRenderReports=renderReports;
 renderReports=function(){ _prRenderReports(); renderPeriodReport(); };
+
+/* ---------- verify a receipt before saving ---------- */
+function verifyReceipt(rec,isEdit){
+  return new Promise(res=>{
+    const box=$("rvModal");
+    $("rvTitle").textContent=isEdit?`Check the changes to receipt ${rec.receiptNo}`:`Check receipt ${rec.receiptNo}`;
+    $("rvSheet").innerHTML=copyHTML(rec,"Preview");
+    $("rvNote").textContent=isEdit?"After you confirm, the receipt is updated with the same number.":"After you confirm, the receipt is saved with this number. The PDF is not downloaded; get it any time from the buttons below the form or from Receipts issued.";
+    $("rvOk").textContent=isEdit?"Confirm & update":"Confirm & save";
+    box.hidden=false; document.body.style.overflow="hidden"; box.scrollTop=0; setTimeout(()=>$("rvOk").focus(),30);
+    const done=v=>{ box.hidden=true; document.body.style.overflow=""; $("rvOk").onclick=$("rvBack").onclick=null; document.removeEventListener("keydown",esc); res(v); };
+    const esc=e=>{ if(e.key==="Escape") done(false); };
+    $("rvOk").onclick=()=>done(true); $("rvBack").onclick=()=>done(false); document.addEventListener("keydown",esc);
+  });
+}
+/* download button next to the share buttons after a receipt is saved */
+const _vfShowShare=showShare;
+showShare=function(r){
+  _vfShowShare(r);
+  const links=$("shareBar").querySelector(".links");
+  if(links && !links.querySelector("[data-rcdl]")){ const b=document.createElement("button"); b.type="button"; b.className="btn ghost"; b.textContent="Download PDF"; b.dataset.rcdl=r.receiptNo; links.prepend(b); }
+};
+document.addEventListener("click",e=>{ const no=e.target.dataset&&e.target.dataset.rcdl; if(!no) return; const r=receipts.find(x=>x.receiptNo===no); if(r) downloadPDF(r,$("rMsg")); });
 /* ---------- local storage + backup ---------- */
 const KEY="stuti-avenue-receipts-v1", META="stuti-avenue-receipts-meta";
 const SEED={"config": {"address": "RESIDANCY SERVAY NO 367, PLOT NO. 327, OPP SOMCHINTAMANI APPT, TP 14, SURAT 395009", "cycle": "apr", "dueDays": 15, "extras": {"entry": 0, "flattx": 0, "nonocc": 0, "other": 0, "parking": 0, "repair": 0, "sharetx": 0, "sinking": 0}, "fmt": "plain", "name": "STUTI AVENUE CO. OP. HOUSING SOCIETY LTD D BLDG", "penaltyRate": 10, "prefix": "SA", "reg": "SRT/S 7124/ DT. 22/11/2012", "rentRate": 1700, "secretary": "", "selfRate": 1400, "startSeq": 1, "treasurer": ""}, "members": [{"id": "f02", "flatNo": "D-102", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f03", "flatNo": "D-103", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f04", "flatNo": "D-104", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f05", "flatNo": "D-201", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f06", "flatNo": "D-202", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f07", "flatNo": "D-203", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f08", "flatNo": "D-204", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f09", "flatNo": "D-301", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f10", "flatNo": "D-302", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f11", "flatNo": "D-303", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f12", "flatNo": "D-304", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f13", "flatNo": "D-401", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f14", "flatNo": "D-402", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f15", "flatNo": "D-403", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f17", "flatNo": "D-501", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f18", "flatNo": "D-502", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f19", "flatNo": "D-503", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f20", "flatNo": "D-504", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrpbvq1", "flatNo": "D-101", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrqe8qi", "flatNo": "D-404", "name": "", "mobile": "", "email": "", "occ": "self"}], "receipts": []};
