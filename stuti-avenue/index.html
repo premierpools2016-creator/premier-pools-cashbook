@@ -95,6 +95,11 @@ td.flat input{width:80px;font-family:var(--mono)}
 .stats b{color:var(--ink);font-family:var(--mono)}
 .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
 .empty{padding:28px;text-align:center;color:var(--muted)}
+.prtbl{min-width:620px}
+.prtbl td{font-size:13px}
+.prtbl td:first-child,.prtbl td.num{white-space:nowrap}
+.prfloor td{background:var(--carbon-soft);color:var(--carbon);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+.prdue td{background:color-mix(in srgb,var(--bad-soft) 55%,transparent)}
 .in{color:var(--stamp)} .out{color:var(--danger)}
 .bknarr{font-size:14px;overflow-wrap:anywhere}
 .bkrow.unmatched{border-left:4px solid var(--warn)}
@@ -654,6 +659,25 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
       </div>
       <div class="msg" id="auMsg" role="status"></div>
       <p class="hint">Send to WhatsApp group opens the phone's share menu with the PDF: choose WhatsApp, then the society group. Only the admin can change the opening balance.</p>
+    </div>
+
+    <div class="panel" style="max-width:760px;margin-top:16px">
+      <h2>Maintenance period report</h2>
+      <p style="margin:0 0 12px">For one 6-month period: every flat, floor by floor, paid or not paid, with the amount, date, payment method and receipt number.</p>
+      <div class="fields">
+        <label class="full">Maintenance period<select id="prPeriod"></select></label>
+        <label>Show<select id="prShow"><option value="all">All flats</option><option value="paid">Paid only</option><option value="due">Not paid only</option></select></label>
+      </div>
+      <div class="stats" id="prStats" style="margin:12px 0"></div>
+      <div class="tbl"><table class="prtbl">
+        <thead><tr><th>Flat</th><th>Member</th><th>Status</th><th style="text-align:right">Amount</th><th>Date</th><th>Method</th><th>Receipt</th></tr></thead>
+        <tbody id="prBody"></tbody>
+      </table></div>
+      <div class="actions">
+        <button class="btn" type="button" id="prDown">Download PDF</button>
+        <button class="btn wa" type="button" id="prShare">Send PDF to WhatsApp group</button>
+      </div>
+      <div class="msg" id="prMsg" role="status"></div>
     </div>
   </section>
 
@@ -2879,6 +2903,87 @@ function bankLinkSaved(type,rec){
 }
 const _bkShowShare=showShare;
 showShare=function(r){ _bkShowShare(r); bankLinkSaved("receipt",r); };
+
+/* ---------- maintenance period report ---------- */
+function prMethod(r){
+  if(r.method==="Cash") return "Cash";
+  if(r.method==="Adjusted") return "Adjusted";
+  if(r.method==="Cheque") return "Cheque"+(r.chqNo?" "+r.chqNo:"")+(r.bank?" ("+r.bank+")":"");
+  return (r.via&&r.via!=="UPI"?r.via:"Online")+(r.txn?" "+r.txn:"");
+}
+function prData(p){
+  const rows=[...members].sort(flatSort).map(m=>{ const r=receiptForPeriod(m,p); const due=rateFor(m.occ)*6;
+    if(!r) return {m,paid:false,due};
+    const parts=itemsOf(r), maint=parts.filter(i=>i.k==="maint").reduce((s,i)=>s+i.amount,0)||Number(r.amount)||0, extra=(Number(r.amount)||0)-maint;
+    return {m,r,paid:true,due,maint,extra,total:Number(r.amount)||0}; });
+  const paid=rows.filter(x=>x.paid), pend=rows.filter(x=>!x.paid), modes={};
+  paid.forEach(x=>{ const k=x.r.method||"Online"; modes[k]=(modes[k]||0)+x.total; });
+  return {rows,paid,pend,collected:paid.reduce((s,x)=>s+x.total,0),maintCollected:paid.reduce((s,x)=>s+x.maint,0),pendingAmt:pend.reduce((s,x)=>s+x.due,0),modes};
+}
+function prPeriodObj(){ return stPeriods().find(x=>x.key===$("prPeriod").value); }
+function renderPeriodReport(){
+  const sel=$("prPeriod"), k=sel.value, ps=stPeriods();
+  sel.innerHTML=ps.map(p=>`<option value="${p.key}">${periodFull(p)}</option>`).join(""); sel.value=ps.some(p=>p.key===k)?k:(ps[0]?.key||"");
+  const p=prPeriodObj(); if(!p){ $("prBody").innerHTML=`<tr><td colspan="7" class="empty">No maintenance period has started yet.</td></tr>`; return; }
+  const d=prData(p), show=$("prShow").value;
+  $("prStats").innerHTML=`<span>Paid <b style="color:var(--stamp)">${d.paid.length} of ${d.rows.length}</b></span><span>Collected <b>Rs. ${inr(d.collected)}</b></span><span>Not paid <b style="color:var(--danger)">${d.pend.length}</b></span><span>Pending <b style="color:var(--danger)">Rs. ${inr(d.pendingAmt)}</b></span>`+Object.keys(d.modes).map(k=>`<span>${esc(k)} <b>Rs. ${inr(d.modes[k])}</b></span>`).join("");
+  let lastFloor=null; const out=[];
+  for(const x of d.rows){
+    if(show==="paid"&&!x.paid||show==="due"&&x.paid) continue;
+    const fl=buildingOf(x.m.flatNo)+"|"+floorOf(x.m.flatNo);
+    if(fl!==lastFloor){ out.push(`<tr class="prfloor"><td colspan="7">${ordinal(floorOf(x.m.flatNo))} floor</td></tr>`); lastFloor=fl; }
+    out.push(x.paid
+      ? `<tr><td><b>${esc(x.m.flatNo)}</b></td><td>${esc(x.m.name||"")}</td><td><span class="pill st-ok">Paid</span></td><td class="num" style="text-align:right">${inr(x.total)}${x.extra?`<div class="muted" style="font-size:11px">maint. ${inr(x.maint)}</div>`:""}</td><td class="num">${fmtDate(x.r.date)}</td><td>${esc(prMethod(x.r))}${x.r.remarks?`<div class="muted" style="font-size:11px">${esc(x.r.remarks)}</div>`:""}</td><td class="num">${esc(x.r.receiptNo)}</td></tr>`
+      : `<tr class="prdue"><td><b>${esc(x.m.flatNo)}</b></td><td>${esc(x.m.name||"")}</td><td><span class="pill st-bad">Not paid</span></td><td class="num" style="text-align:right;color:var(--muted)">${inr(x.due)} due</td><td>–</td><td>–</td><td>–</td></tr>`);
+  }
+  $("prBody").innerHTML=out.join("")||`<tr><td colspan="7" class="empty">No flats to show.</td></tr>`;
+}
+async function buildPeriodPDF(p){
+  const { jsPDF } = window.jspdf; const doc=new jsPDF({unit:"mm",format:"a4"}); const W=210,H=297,M=12; const d=prData(p);
+  const head=()=>{ doc.setFont("helvetica","bold"); doc.setFontSize(12.5); doc.setTextColor(24,33,58); doc.text(cfg.name,M,14,{maxWidth:W-2*M-62});
+    doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(93,104,134); doc.text([cfg.reg?"Reg. No. "+cfg.reg:"",cfg.address].filter(Boolean).join("  |  "),M,19.5,{maxWidth:W-2*M-62});
+    doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(35,64,168); doc.text("MAINTENANCE COLLECTION",W-M,14,{align:"right"});
+    doc.setFont("helvetica","normal"); doc.setFontSize(8.5); doc.setTextColor(93,104,134); doc.text(periodFull(p),W-M,19.5,{align:"right"});
+    doc.setDrawColor(213,219,231); doc.setLineWidth(0.3); doc.line(M,23,W-M,23); return 28; };
+  let y=head();
+  y=pdfTable(doc,{y,M,W,H,head,cols:[{h:"Summary",w:120},{h:"Flats",w:26,r:1},{h:"Rs.",w:40,r:1}],rows:[
+    {cells:["Paid",d.paid.length,inr(d.collected)]},
+    ...Object.keys(d.modes).map(k=>({cells:["   by "+k,"",inr(d.modes[k])]})),
+    {bold:true,fill:[252,228,226],cells:["Not paid (maintenance due)",d.pend.length,inr(d.pendingAmt)]},
+    {bold:true,fill:[223,242,232],cells:["Total flats",d.rows.length,""]}]});
+  y+=6; let lastFloor=null; const rows=[];
+  for(const x of d.rows){
+    const fl=buildingOf(x.m.flatNo)+"|"+floorOf(x.m.flatNo);
+    if(fl!==lastFloor){ rows.push({bold:true,fill:[238,241,246],cells:[ordinal(floorOf(x.m.flatNo))+" floor","","","","","",""]}); lastFloor=fl; }
+    rows.push(x.paid?{cells:[x.m.flatNo,x.m.name||"","Paid",inr(x.total),fmtDate(x.r.date),prMethod(x.r),x.r.receiptNo]}
+      :{fill:[253,240,238],cells:[x.m.flatNo,x.m.name||"","NOT PAID",inr(x.due)+" due","-","-","-"]});
+    if(x.paid&&x.r.remarks) rows.push({cells:["","   "+x.r.remarks,"","","","",""]});
+  }
+  y=pdfTable(doc,{y,M,W,H,head,cols:[{h:"Flat",w:16},{h:"Member",w:40},{h:"Status",w:18},{h:"Amount",w:24,r:1},{h:"Date",w:20},{h:"Method",w:48},{h:"Rcpt",w:20}],rows});
+  if(d.pend.length){ if(y>H-30){ doc.addPage(); y=head(); } doc.setFont("helvetica","bold"); doc.setFontSize(9.5); doc.setTextColor(162,59,51);
+    doc.text("Not paid: "+d.pend.map(x=>x.m.flatNo).join(", "),M,y+8,{maxWidth:W-2*M}); }
+  const n=doc.getNumberOfPages(), gen=new Date().toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"});
+  for(let i=1;i<=n;i++){ doc.setPage(i); doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(150,160,185); doc.text(`Generated ${gen}`,M,H-7); doc.text(`Page ${i} of ${n}`,W-M,H-7,{align:"right"}); }
+  return {blob:doc.output("blob"),d};
+}
+async function periodGo(share){
+  const msg=$("prMsg"), p=prPeriodObj(); if(!p){ setMsg(msg,"err","Choose a period."); return; }
+  if(!window.jspdf){ setMsg(msg,"err","The PDF maker could not load. Connect to the internet once and reload the app."); return; }
+  try{
+    const {blob,d}=await buildPeriodPDF(p), fname=`Stuti Avenue maintenance ${periodFull(p)}.pdf`;
+    if(!share){ saveBlob(blob,fname); setMsg(msg,"ok","PDF downloaded."); return; }
+    const file=new File([blob],fname,{type:"application/pdf"});
+    const text=`*${cfg.name}*\nMaintenance ${periodFull(p)}\nPaid ${d.paid.length} of ${d.rows.length} flats · Rs. ${inr(d.collected)}\nNot paid: ${d.pend.map(x=>x.m.flatNo).join(", ")||"none"}`;
+    if(navigator.canShare&&navigator.canShare({files:[file]})){ try{ await navigator.share({files:[file],text,title:fname}); setMsg(msg,"ok","Choose WhatsApp, then the society group."); }catch(err){ if(err.name!=="AbortError") setMsg(msg,"err","Could not share: "+err.message); } }
+    else { saveBlob(blob,fname); setMsg(msg,"","This phone can't share files from here, so the PDF was downloaded. Attach it in the WhatsApp group."); }
+  }catch(err){ setMsg(msg,"err","Could not make the PDF: "+(err.message||err)); }
+}
+$("prPeriod").addEventListener("change",renderPeriodReport);
+$("prShow").addEventListener("change",renderPeriodReport);
+$("prDown").addEventListener("click",()=>periodGo(false));
+$("prShare").addEventListener("click",()=>periodGo(true));
+const _prRenderReports=renderReports;
+renderReports=function(){ _prRenderReports(); renderPeriodReport(); };
 /* ---------- local storage + backup ---------- */
 const KEY="stuti-avenue-receipts-v1", META="stuti-avenue-receipts-meta";
 const SEED={"config": {"address": "RESIDANCY SERVAY NO 367, PLOT NO. 327, OPP SOMCHINTAMANI APPT, TP 14, SURAT 395009", "cycle": "apr", "dueDays": 15, "extras": {"entry": 0, "flattx": 0, "nonocc": 0, "other": 0, "parking": 0, "repair": 0, "sharetx": 0, "sinking": 0}, "fmt": "plain", "name": "STUTI AVENUE CO. OP. HOUSING SOCIETY LTD D BLDG", "penaltyRate": 10, "prefix": "SA", "reg": "SRT/S 7124/ DT. 22/11/2012", "rentRate": 1700, "secretary": "", "selfRate": 1400, "startSeq": 1, "treasurer": ""}, "members": [{"id": "f02", "flatNo": "D-102", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f03", "flatNo": "D-103", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f04", "flatNo": "D-104", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f05", "flatNo": "D-201", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f06", "flatNo": "D-202", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f07", "flatNo": "D-203", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f08", "flatNo": "D-204", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f09", "flatNo": "D-301", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f10", "flatNo": "D-302", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f11", "flatNo": "D-303", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f12", "flatNo": "D-304", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f13", "flatNo": "D-401", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f14", "flatNo": "D-402", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f15", "flatNo": "D-403", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f17", "flatNo": "D-501", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f18", "flatNo": "D-502", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f19", "flatNo": "D-503", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f20", "flatNo": "D-504", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrpbvq1", "flatNo": "D-101", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrqe8qi", "flatNo": "D-404", "name": "", "mobile": "", "email": "", "occ": "self"}], "receipts": []};
