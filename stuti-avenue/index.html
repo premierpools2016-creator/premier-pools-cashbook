@@ -95,6 +95,7 @@ td.flat input{width:80px;font-family:var(--mono)}
 .stats b{color:var(--ink);font-family:var(--mono)}
 .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
 .empty{padding:28px;text-align:center;color:var(--muted)}
+.fsdue td{background:var(--bg)}
 .rvwrap{position:fixed;inset:0;z-index:55;background:rgba(20,26,38,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:max(12px,env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
 .rvbox{background:var(--paper);border-radius:14px;max-width:560px;width:100%;padding:16px;display:grid;gap:12px;margin:auto 0}
 .rvnote{margin:0;font-size:13px;color:var(--muted)}
@@ -365,6 +366,15 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
         <textarea id="stText" rows="12" aria-label="Message"></textarea>
         <div class="lgbtns"><a class="btn wa" id="stWA" href="#" target="_blank" rel="noopener">Send to WhatsApp group</a><button class="btn ghost" type="button" id="stCopy">Copy</button></div>
         <p class="hint" style="margin:0;flex:1 1 100%">You can edit the text before sending. Notes typed in a receipt's Remarks (e.g. electricity bill adjustments) appear next to that flat.</p>
+      </div>
+      <div class="ledger">
+        <div class="lgtext"><b>Download receipts in bulk</b><span>One PDF with every receipt you choose, one A4 page each (Member and Society copy).</span></div>
+        <label>Receipts for<select id="bkrBy"><option value="period">A maintenance period</option><option value="dates">Dates received</option></select></label>
+        <label id="bkrPBox">Period<select id="bkrPeriod"></select></label>
+        <label id="bkrFBox" hidden>From<input type="date" id="bkrFrom"></label>
+        <label id="bkrTBox" hidden>To<input type="date" id="bkrTo"></label>
+        <div class="lgbtns"><button class="btn" type="button" id="bkrGo">Download PDF</button><button class="btn ghost" type="button" id="bkrShare">Share PDF</button></div>
+        <div class="msg" id="bkrMsg" role="status" style="flex:1 1 100%"></div>
       </div>
       <div class="stats" id="hStats" style="margin-bottom:12px"></div>
       <div class="tbl">
@@ -691,6 +701,29 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
         <button class="btn wa" type="button" id="prShare">Send PDF to WhatsApp group</button>
       </div>
       <div class="msg" id="prMsg" role="status"></div>
+    </div>
+
+    <div class="panel" style="max-width:760px;margin-top:16px">
+      <h2>Flat ledger</h2>
+      <p style="margin:0 0 12px">Account of one flat for the dates you choose: maintenance due each period, payments received, other charges, money the society owes the flat, and the balance after each entry.</p>
+      <div class="fields">
+        <label class="full">Flat<select id="fsFlat"></select></label>
+        <label>From<input type="date" id="fsFrom"></label>
+        <label>To<input type="date" id="fsTo"></label>
+      </div>
+      <div class="stats" id="fsStats" style="margin:12px 0"></div>
+      <div class="tbl"><table class="prtbl">
+        <thead><tr><th>Date</th><th>Particulars</th><th style="text-align:right">Due (Dr)</th><th style="text-align:right">Paid (Cr)</th><th style="text-align:right">Balance</th></tr></thead>
+        <tbody id="fsBody"></tbody>
+      </table></div>
+      <p class="hint" id="fsNote" style="margin:8px 0 0"></p>
+      <div class="actions">
+        <button class="btn" type="button" id="fsPdf">Download PDF</button>
+        <button class="btn ghost" type="button" id="fsShare">Share PDF</button>
+        <a class="btn wa" id="fsWa" href="#" target="_blank" rel="noopener">WhatsApp summary to member</a>
+        <button class="btn ghost" type="button" id="fsAll">PDF for all flats</button>
+      </div>
+      <div class="msg" id="fsMsg" role="status"></div>
     </div>
   </section>
 
@@ -1103,9 +1136,9 @@ function showShare(r){
 }
 
 /* ---------- PDF ---------- */
-function buildPDF(r){
+function buildPDF(r,docIn){
   const { jsPDF } = window.jspdf;
-  const doc=new jsPDF({unit:"mm",format:"a4"});
+  const doc=docIn||new jsPDF({unit:"mm",format:"a4"});
   const W=210, H=297, half=H/2, M=14, items=itemsOf(r);
   const drawCopy=(top,label)=>{
     let y=top+13;
@@ -3022,6 +3055,118 @@ showShare=function(r){
   if(links && !links.querySelector("[data-rcdl]")){ const b=document.createElement("button"); b.type="button"; b.className="btn ghost"; b.textContent="Download PDF"; b.dataset.rcdl=r.receiptNo; links.prepend(b); }
 };
 document.addEventListener("click",e=>{ const no=e.target.dataset&&e.target.dataset.rcdl; if(!no) return; const r=receipts.find(x=>x.receiptNo===no); if(r) downloadPDF(r,$("rMsg")); });
+
+/* ---------- bulk receipt PDF ---------- */
+function bkrList(){
+  if($("bkrBy").value==="period"){ const p=stPeriods().find(x=>x.key===$("bkrPeriod").value); if(!p) return {list:[],label:""};
+    const s=isoOf(p.start), e=periodEnd(p);
+    return {list:receipts.filter(r=>r.inclMaint!==false&&((r.from&&r.from>=s&&r.from<=e)||(!r.from&&r.periodKey===p.key))),label:periodFull(p)}; }
+  const f=$("bkrFrom").value, t=$("bkrTo").value;
+  return {list:receipts.filter(r=>(!f||r.date>=f)&&(!t||r.date<=t)),label:`${f?fmtDate(f):"start"} to ${t?fmtDate(t):"today"}`};
+}
+function bkrRender(){
+  const sel=$("bkrPeriod"), k=sel.value, ps=stPeriods();
+  sel.innerHTML=ps.map(p=>`<option value="${p.key}">${periodFull(p)}</option>`).join(""); sel.value=ps.some(p=>p.key===k)?k:(ps[0]?.key||"");
+  const byP=$("bkrBy").value==="period"; $("bkrPBox").hidden=!byP; $("bkrFBox").hidden=byP; $("bkrTBox").hidden=byP;
+  const {list}=bkrList(); $("bkrGo").textContent=`Download PDF (${list.length})`;
+}
+["bkrBy","bkrPeriod","bkrFrom","bkrTo"].forEach(id=>$(id).addEventListener("change",()=>{ setMsg($("bkrMsg"),"",""); bkrRender(); }));
+async function bkrGo(share){
+  const msg=$("bkrMsg"); if(!window.jspdf){ setMsg(msg,"err","The PDF maker could not load. Connect to the internet once and reload the app."); return; }
+  const {list,label}=bkrList(); if(!list.length){ setMsg(msg,"err","No receipts for this choice."); return; }
+  const sorted=[...list].sort((a,b)=>(Number(a.seq)||0)-(Number(b.seq)||0));
+  setMsg(msg,"",`Making ${sorted.length} receipts…`);
+  try{
+    const { jsPDF } = window.jspdf; const doc=new jsPDF({unit:"mm",format:"a4"});
+    sorted.forEach((r,i)=>{ if(i) doc.addPage(); buildPDF(r,doc); });
+    const blob=doc.output("blob"), fname=`Stuti Avenue receipts ${label.replace(/\//g,"-")}.pdf`;
+    if(share){ await shareFile(blob,fname,msg,"application/pdf"); if(msg.textContent.startsWith("Making")) setMsg(msg,"",""); }
+    else { saveBlob(blob,fname); setMsg(msg,"ok",`${sorted.length} receipts downloaded in one PDF (receipt no. ${sorted[0].receiptNo} to ${sorted[sorted.length-1].receiptNo}).`); }
+  }catch(err){ setMsg(msg,"err","Could not make the PDF: "+(err.message||err)); }
+}
+$("bkrGo").addEventListener("click",()=>bkrGo(false));
+$("bkrShare").addEventListener("click",()=>bkrGo(true));
+const _ldRenderHistory=renderHistory;
+renderHistory=function(){ _ldRenderHistory(); bkrRender(); };
+
+/* ---------- flat ledger ---------- */
+function ledgerStartKey(){ const ks=receipts.filter(r=>r.inclMaint!==false).map(r=>r.from?r.from.slice(0,7):r.periodKey).filter(Boolean).sort(); return ks[0]||null; }
+function flatEntries(m){
+  // every entry for this flat, in date order: Dr increases what the flat owes, Cr reduces it
+  const out=[], start=ledgerStartKey(), today=todayISO();
+  if(start) for(const p of periods()){ const s=isoOf(p.start); if(p.key<start||s>today) continue;
+    const r=receiptForPeriod(m,p), rate=r?Number(r.rate)||rateFor(r.occ||m.occ):rateFor(m.occ);
+    out.push({date:s,text:`Maintenance due ${periodFull(p)} (${(r?r.occ:m.occ)==="rented"?"rented":"self"})`,dr:rate*6,cr:0,kind:"due"}); }
+  for(const r of receipts.filter(x=>x.memberId===m.id)){
+    for(const it of itemsOf(r)) if(it.k!=="maint") out.push({date:r.date,text:`${shortItem(it.label)} (receipt ${r.receiptNo})`,dr:it.amount,cr:0,kind:"charge"});
+    out.push({date:r.date,text:`Paid – receipt ${r.receiptNo} · ${prMethod(r)}${r.period?" · for "+r.period:""}`,dr:0,cr:Number(r.amount)||0,kind:"paid"});
+  }
+  for(const x of soc.expenses.filter(x=>isMemberPaid(x)&&x.payerId===m.id)){
+    out.push({date:x.date,text:`Paid on society's behalf: ${exHeadText(x)} (V-${pad(x.seq)})`,dr:0,cr:x.amount,kind:"owed"});
+    reimbsOf(x).forEach(r=>out.push({date:r.date,text:`Repaid by society · ${r.method}${r.ref?" "+r.ref:""} (V-${pad(x.seq)})`,dr:Number(r.amount)||0,cr:0,kind:"repay"}));
+  }
+  const ord={due:0,charge:1,paid:2,owed:3,repay:4};
+  return out.sort((a,b)=>a.date.localeCompare(b.date)||ord[a.kind]-ord[b.kind]);
+}
+function flatLedger(m,from,to){
+  const all=flatEntries(m); let open=0; const rows=[]; let bal;
+  for(const e of all){ if(from&&e.date<from) open+=e.dr-e.cr; }
+  bal=open;
+  for(const e of all){ if((from&&e.date<from)||(to&&e.date>to)) continue; bal+=e.dr-e.cr; rows.push({...e,bal}); }
+  return {open,rows,close:bal,dr:rows.reduce((s,e)=>s+e.dr,0),cr:rows.reduce((s,e)=>s+e.cr,0)};
+}
+const balText=b=>Math.abs(b)<0.5?"Nil":b>0?`${inr(b)} due`:`${inr(-b)} advance`;
+function fsMember(){ return members.find(x=>x.id===$("fsFlat").value); }
+function renderFlatLedger(){
+  const sel=$("fsFlat"), k=sel.value; sel.innerHTML=[...members].sort(flatSort).map(m=>`<option value="${esc(m.id)}">${esc(memberLabel(m))}</option>`).join(""); sel.value=members.some(m=>m.id===k)?k:(sel.options[0]?.value||"");
+  if(!$("fsFrom").value){ const [a,b]=fyRange(todayISO()); $("fsFrom").value=a; $("fsTo").value=b; }
+  const m=fsMember(); if(!m){ $("fsBody").innerHTML=""; return; }
+  const L=flatLedger(m,$("fsFrom").value,$("fsTo").value), from=$("fsFrom").value, to=$("fsTo").value;
+  $("fsStats").innerHTML=`<span>Opening <b>${balText(L.open)}</b></span><span>Due in period <b>Rs. ${inr(L.dr)}</b></span><span>Paid in period <b style="color:var(--stamp)">Rs. ${inr(L.cr)}</b></span><span>Closing <b style="color:${L.close>0.5?"var(--danger)":"var(--stamp)"}">${balText(L.close)}</b></span>`;
+  $("fsBody").innerHTML=`<tr class="prfloor"><td colspan="5">Opening balance on ${from?fmtDate(from):"start"}: ${balText(L.open)}</td></tr>`+
+    (L.rows.length?L.rows.map(e=>`<tr${e.kind==="due"?' class="fsdue"':""}><td class="num">${fmtDate(e.date)}</td><td>${esc(e.text)}</td><td class="num" style="text-align:right">${e.dr?inr(e.dr):""}</td><td class="num" style="text-align:right;color:var(--stamp)">${e.cr?inr(e.cr):""}</td><td class="num" style="text-align:right">${balText(e.bal)}</td></tr>`).join("")
+      :`<tr><td colspan="5" class="empty">No entries for this flat in these dates.</td></tr>`)+
+    `<tr class="prfloor"><td colspan="5">Closing balance on ${to?fmtDate(to):"today"}: ${balText(L.close)}</td></tr>`;
+  const st=ledgerStartKey(); $("fsNote").textContent=st?`Maintenance dues are counted from ${MONTHS_FULL[+st.slice(5,7)-1]} ${st.slice(0,4)}, the first period with receipts in the app. "Due" means the flat owes the society; "advance" means the society owes the flat.`:"No receipts in the app yet, so no dues are counted.";
+  const num=(m.mobile||"").replace(/\D/g,""), t=`*${cfg.name}*\nAccount of Flat ${m.flatNo}${m.name?" – "+m.name:""}\n${from?fmtDate(from):"start"} to ${to?fmtDate(to):"today"}\n\nOpening: ${balText(L.open)}\nDue in this period: Rs. ${inr(L.dr)}\nPaid in this period: Rs. ${inr(L.cr)}\n*Balance: ${balText(L.close)}*${L.close>0.5?"\n\nKindly pay at the earliest. Thank you.":"\n\nThank you."}`;
+  $("fsWa").href=`https://wa.me/${num.length===10?"91"+num:num}?text=${encodeURIComponent(t)}`;
+}
+function drawFlatLedger(doc,m,from,to,first){
+  const W=210,H=297,M=12, L=flatLedger(m,from,to);
+  const head=()=>{ doc.setFont("helvetica","bold"); doc.setFontSize(12.5); doc.setTextColor(24,33,58); doc.text(cfg.name,M,14,{maxWidth:W-2*M-60});
+    doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(93,104,134); doc.text([cfg.reg?"Reg. No. "+cfg.reg:"",cfg.address].filter(Boolean).join("  |  "),M,19.5,{maxWidth:W-2*M-60});
+    doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(35,64,168); doc.text("FLAT LEDGER",W-M,14,{align:"right"});
+    doc.setFont("helvetica","normal"); doc.setFontSize(8.5); doc.setTextColor(93,104,134); doc.text(`${from?fmtDate(from):"start"} to ${to?fmtDate(to):"today"}`,W-M,19.5,{align:"right"});
+    doc.setDrawColor(213,219,231); doc.setLineWidth(0.3); doc.line(M,23,W-M,23); return 28; };
+  if(!first) doc.addPage();
+  let y=head();
+  doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(24,33,58); doc.text(`Flat ${m.flatNo}${m.name?"  ·  "+m.name:""}`,M,y+2);
+  doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(93,104,134); doc.text([m.occ==="rented"?"Rented":"Self",m.mobile?"Mobile "+m.mobile:""].filter(Boolean).join("  ·  "),M,y+7); y+=12;
+  y=pdfTable(doc,{y,M,W,H,head,cols:[{h:"Date",w:20},{h:"Particulars",w:96},{h:"Due (Dr)",w:22,r:1},{h:"Paid (Cr)",w:22,r:1},{h:"Balance",w:26,r:1}],rows:[
+    {bold:true,fill:[238,241,246],cells:[from?fmtDate(from):"","Opening balance","","",balText(L.open)]},
+    ...L.rows.map(e=>({fill:e.kind==="due"?[245,247,251]:null,cells:[fmtDate(e.date),e.text,e.dr?inr(e.dr):"",e.cr?inr(e.cr):"",balText(e.bal)]})),
+    {bold:true,fill:L.close>0.5?[252,228,226]:[223,242,232],cells:[to?fmtDate(to):"","Closing balance",inr(L.dr),inr(L.cr),balText(L.close)]}]});
+  return L;
+}
+async function fsPdf(mode){
+  const msg=$("fsMsg"); if(!window.jspdf){ setMsg(msg,"err","The PDF maker could not load. Connect to the internet once and reload the app."); return; }
+  const from=$("fsFrom").value, to=$("fsTo").value; if(from&&to&&to<from){ setMsg(msg,"err","The 'To' date is before the 'From' date."); return; }
+  try{
+    const { jsPDF } = window.jspdf; const doc=new jsPDF({unit:"mm",format:"a4"}); let fname;
+    if(mode==="all"){ [...members].sort(flatSort).forEach((m,i)=>drawFlatLedger(doc,m,from,to,i===0)); fname=`Stuti Avenue flat ledgers ${from||"start"} to ${to||"today"}.pdf`; }
+    else { const m=fsMember(); if(!m) return; drawFlatLedger(doc,m,from,to,true); fname=`Ledger ${m.flatNo} ${from||"start"} to ${to||"today"}.pdf`; }
+    const n=doc.getNumberOfPages(), gen=new Date().toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"});
+    for(let i=1;i<=n;i++){ doc.setPage(i); doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(150,160,185); doc.text(`Generated ${gen}`,12,290); doc.text(`Page ${i} of ${n}`,198,290,{align:"right"}); }
+    const blob=doc.output("blob");
+    if(mode==="share") await shareFile(blob,fname,msg,"application/pdf"); else { saveBlob(blob,fname); setMsg(msg,"ok",mode==="all"?`Ledger PDF for all ${members.length} flats downloaded.`:"Ledger PDF downloaded."); }
+  }catch(err){ setMsg(msg,"err","Could not make the PDF: "+(err.message||err)); }
+}
+["fsFlat","fsFrom","fsTo"].forEach(id=>$(id).addEventListener("change",renderFlatLedger));
+$("fsPdf").addEventListener("click",()=>fsPdf("one"));
+$("fsShare").addEventListener("click",()=>fsPdf("share"));
+$("fsAll").addEventListener("click",()=>fsPdf("all"));
+const _ldRenderReports=renderReports;
+renderReports=function(){ _ldRenderReports(); renderFlatLedger(); };
 /* ---------- local storage + backup ---------- */
 const KEY="stuti-avenue-receipts-v1", META="stuti-avenue-receipts-meta";
 const SEED={"config": {"address": "RESIDANCY SERVAY NO 367, PLOT NO. 327, OPP SOMCHINTAMANI APPT, TP 14, SURAT 395009", "cycle": "apr", "dueDays": 15, "extras": {"entry": 0, "flattx": 0, "nonocc": 0, "other": 0, "parking": 0, "repair": 0, "sharetx": 0, "sinking": 0}, "fmt": "plain", "name": "STUTI AVENUE CO. OP. HOUSING SOCIETY LTD D BLDG", "penaltyRate": 10, "prefix": "SA", "reg": "SRT/S 7124/ DT. 22/11/2012", "rentRate": 1700, "secretary": "", "selfRate": 1400, "startSeq": 1, "treasurer": ""}, "members": [{"id": "f02", "flatNo": "D-102", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f03", "flatNo": "D-103", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f04", "flatNo": "D-104", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f05", "flatNo": "D-201", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f06", "flatNo": "D-202", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f07", "flatNo": "D-203", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f08", "flatNo": "D-204", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f09", "flatNo": "D-301", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f10", "flatNo": "D-302", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f11", "flatNo": "D-303", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f12", "flatNo": "D-304", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f13", "flatNo": "D-401", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f14", "flatNo": "D-402", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f15", "flatNo": "D-403", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f17", "flatNo": "D-501", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f18", "flatNo": "D-502", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f19", "flatNo": "D-503", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f20", "flatNo": "D-504", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrpbvq1", "flatNo": "D-101", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrqe8qi", "flatNo": "D-404", "name": "", "mobile": "", "email": "", "occ": "self"}], "receipts": []};
