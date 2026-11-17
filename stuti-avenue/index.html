@@ -95,6 +95,14 @@ td.flat input{width:80px;font-family:var(--mono)}
 .stats b{color:var(--ink);font-family:var(--mono)}
 .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
 .empty{padding:28px;text-align:center;color:var(--muted)}
+.cashnow{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:14px 16px;border-radius:12px;background:var(--carbon-soft);margin-bottom:14px}
+.cashnow span{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+.cashnow b{font-size:26px;font-family:var(--mono,monospace);color:var(--ink)}
+.cashnow small{flex:1 1 100%;color:var(--muted);font-size:12px}
+.cbform{padding:12px;border:1px dashed var(--line);border-radius:12px}
+.cbopen{margin-top:12px}.cbopen summary{cursor:pointer;font-weight:600;color:var(--carbon)}
+.cbrow td{background:color-mix(in srgb,var(--carbon-soft) 45%,transparent)}
+.role-entry [data-cbdel],.role-viewer [data-cbdel]{display:none!important}
 .fsdue td{background:var(--bg)}
 .rvwrap{position:fixed;inset:0;z-index:55;background:rgba(20,26,38,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:max(12px,env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
 .rvbox{background:var(--paper);border-radius:14px;max-width:560px;width:100%;padding:16px;display:grid;gap:12px;margin:auto 0}
@@ -683,6 +691,47 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
       </div>
       <div class="msg" id="auMsg" role="status"></div>
       <p class="hint">Send to WhatsApp group opens the phone's share menu with the PDF: choose WhatsApp, then the society group. Only the admin can change the opening balance.</p>
+    </div>
+
+    <div class="panel" style="max-width:760px;margin-top:16px" id="cashPanel">
+      <h2>Cash book</h2>
+      <p style="margin:0 0 12px">Cash in hand: cash receipts and cash entries add to it; cash expenses, cash repayments to members and cash deposited in the bank reduce it.</p>
+      <div class="banner errbar" id="cbRules" hidden>The cash book needs one change in the online database rules before cash entries can be saved. Admin: open <b>Settings</b>, in <b>Online sharing</b> tap <b>Copy security rules</b>, then paste them in Firebase → Firestore Database → Rules and tap Publish.</div>
+      <div class="cashnow" id="cbNow"></div>
+      <form id="cbForm" class="fields cbform" autocomplete="off">
+        <label class="full">Add cash entry<select id="cbType">
+          <option value="dep">Cash deposited in bank (cash out)</option>
+          <option value="wd">Cash withdrawn from bank (cash in)</option>
+          <option value="in">Other cash received (cash in)</option>
+          <option value="out">Other cash paid (cash out)</option>
+        </select></label>
+        <label>Date<input type="date" id="cbDate" required></label>
+        <label>Amount (Rs.)<input type="number" id="cbAmt" class="num" min="1" step="1" required inputmode="numeric"></label>
+        <label class="full">Note<input id="cbNote" placeholder="e.g. Deposit slip no., bank, who deposited"></label>
+        <div class="full"><button class="btn" type="submit">Save cash entry</button></div>
+      </form>
+      <details class="cbopen" id="cbOpenBox"><summary>Opening cash in hand (admin)</summary>
+        <div class="fields" style="margin-top:8px">
+          <label>As on date<input type="date" id="cbOpenDate"></label>
+          <label>Cash in hand (Rs.)<input type="number" id="cbOpenAmt" class="num" step="1" inputmode="numeric"></label>
+          <div class="full"><button class="btn ghost" type="button" id="cbOpenSave">Save opening cash</button></div>
+        </div>
+        <p class="hint" style="margin:6px 0 0">Count the cash with the treasurer on one date and enter it here. Only cash entries from that date onwards are counted.</p>
+      </details>
+      <div class="fields" style="margin-top:14px">
+        <label>From<input type="date" id="cbFrom"></label>
+        <label>To<input type="date" id="cbTo"></label>
+      </div>
+      <div class="stats" id="cbStats" style="margin:12px 0"></div>
+      <div class="tbl"><table class="prtbl">
+        <thead><tr><th>Date</th><th>Particulars</th><th style="text-align:right">Cash in</th><th style="text-align:right">Cash out</th><th style="text-align:right">Balance</th><th></th></tr></thead>
+        <tbody id="cbBody"></tbody>
+      </table></div>
+      <div class="actions">
+        <button class="btn" type="button" id="cbPdf">Download PDF</button>
+        <button class="btn ghost" type="button" id="cbShare">Share PDF</button>
+      </div>
+      <div class="msg" id="cbMsg" role="status"></div>
     </div>
 
     <div class="panel" style="max-width:760px;margin-top:16px">
@@ -2124,6 +2173,7 @@ const COLS={
   reminders:{get:()=>soc.reminders,set:v=>{soc.reminders=v;}},
   complaints:{get:()=>soc.complaints,set:v=>{soc.complaints=v;}},
   bank:{get:()=>(soc.bank||(soc.bank=[])),set:v=>{soc.bank=v;}},
+  cash:{get:()=>(soc.cash||(soc.cash=[])),set:v=>{soc.cash=v;}},
 };
 const BASE={}, LAST={}; let loaded=new Set();
 const pending=new Set(); let rafId=0;
@@ -2253,7 +2303,7 @@ service cloud.firestore {
     match /meta/roles { allow read: if isAdmin() || (signedIn() && (email() in resource.data.entry || email() in resource.data.viewers)); allow write: if isAdmin(); }
     match /config/{id} { allow read: if canRead(); allow write: if isAdmin(); }
     match /members/{id} { allow read: if canRead(); allow write: if isAdmin(); }
-${["receipts","expenses","contacts","docs"].map(std).join("\n")}
+${["receipts","expenses","contacts","docs","cash"].map(std).join("\n")}
     match /files/{id} { allow read: if canRead(); allow create: if canAdd(); allow update, delete: if isAdmin();
       match /chunks/{n} { allow read: if canRead(); allow create: if canAdd(); allow update, delete: if isAdmin(); } }
     match /reminders/{id} { allow read: if canRead(); allow create: if canAdd(); allow update: if isAdmin() || (isEntry() && onlyKeys(['due','lastDone'])); allow delete: if isAdmin(); }
@@ -3202,6 +3252,96 @@ update=function(){ syncPeriodSel(); _psUpdate(); };
 const _psReset=resetForm;
 resetForm=function(){ psCustom=false; _psReset(); syncPeriodSel(); };
 setTimeout(()=>{ syncPeriodSel(); update(); },0);
+
+/* ---------- cash book ---------- */
+const CASH_TYPES={dep:{t:"Cash deposited in bank",dir:-1},wd:{t:"Cash withdrawn from bank",dir:1},in:{t:"Other cash received",dir:1},out:{t:"Other cash paid",dir:-1}};
+let cashBlocked=false;
+const _cbCloudError=cloudError;
+cloudError=function(err,col,item){
+  if(col==="cash" && err && err.code==="permission-denied"){ cashBlocked=true; if(item){ soc.cash=(soc.cash||[]).filter(x=>x.id!==item.id); } renderCashBook(); return; }
+  return _cbCloudError(err,col,item);
+};
+function cashMoves(){
+  const out=[], o=cfg.cash||{}, start=o.openDate||"";
+  for(const r of receipts) if(r.method==="Cash") out.push({date:r.date,text:`Receipt ${r.receiptNo} · Flat ${r.flatNo}${r.name?" "+r.name:""}`,amt:Number(r.amount)||0,kind:"rc"});
+  for(const x of soc.expenses){
+    if(!isMemberPaid(x)){ if(x.method==="Cash") out.push({date:x.date,text:`Voucher V-${pad(x.seq)} · ${exHeadText(x)}${x.party?" · "+x.party:""}`,amt:-x.amount,kind:"ex"}); }
+    else for(const r of reimbsOf(x)) if(r.method==="Cash"&&r.date) out.push({date:r.date,text:`Repaid to ${x.payerFlat||"member"} (V-${pad(x.seq)})`,amt:-(Number(r.amount)||0),kind:"ex"});
+  }
+  for(const c of (soc.cash||[])){ const T=CASH_TYPES[c.type]||CASH_TYPES.in; out.push({date:c.date,text:T.t+(c.note?" · "+c.note:""),amt:T.dir*(Number(c.amount)||0),kind:"cb",id:c.id}); }
+  return out.filter(m=>m.date&&(!start||m.date>=start)).sort((a,b)=>a.date.localeCompare(b.date)||(b.amt>0)-(a.amt>0));
+}
+function cashBook(from,to){
+  const o=cfg.cash||{}, all=cashMoves(); let open=Number(o.openAmt)||0;
+  for(const m of all) if(from&&m.date<from) open+=m.amt;
+  let bal=open; const rows=[];
+  for(const m of all){ if((from&&m.date<from)||(to&&m.date>to)) continue; bal+=m.amt; rows.push({...m,bal}); }
+  let now=Number(o.openAmt)||0; for(const m of all) if(m.date<=todayISO()) now+=m.amt;
+  return {open,rows,close:bal,tin:rows.filter(r=>r.amt>0).reduce((s,r)=>s+r.amt,0),tout:rows.filter(r=>r.amt<0).reduce((s,r)=>s-r.amt,0),now};
+}
+const cbMoney=v=>(v<0?"- ":"")+"Rs. "+inr(Math.abs(v));
+function renderCashBook(){
+  if(!$("cbFrom").value){ const [a,b]=fyRange(todayISO()); $("cbFrom").value=a; $("cbTo").value=b; }
+  if(!$("cbDate").value) $("cbDate").value=todayISO();
+  const o=cfg.cash||{};
+  if(document.activeElement!==$("cbOpenDate")&&document.activeElement!==$("cbOpenAmt")){ $("cbOpenDate").value=o.openDate||""; $("cbOpenAmt").value=o.openAmt??""; }
+  $("cbOpenBox").hidden=ROLE!=="admin"; $("cbForm").hidden=ROLE==="viewer"; $("cbRules").hidden=!cashBlocked;
+  const from=$("cbFrom").value, to=$("cbTo").value, B=cashBook(from,to);
+  $("cbNow").innerHTML=`<span>Cash in hand today</span><b>${cbMoney(B.now)}</b>${o.openDate?`<small>counted from opening cash on ${fmtDate(o.openDate)}</small>`:`<small>No opening cash entered yet, so this starts from zero.</small>`}`;
+  $("cbStats").innerHTML=`<span>Opening <b>${cbMoney(B.open)}</b></span><span>Cash in <b style="color:var(--stamp)">Rs. ${inr(B.tin)}</b></span><span>Cash out <b style="color:var(--danger)">Rs. ${inr(B.tout)}</b></span><span>Closing <b>${cbMoney(B.close)}</b></span>`;
+  $("cbBody").innerHTML=`<tr class="prfloor"><td colspan="6">Opening cash on ${from?fmtDate(from):"start"}: ${cbMoney(B.open)}</td></tr>`+
+    (B.rows.length?B.rows.map(m=>`<tr${m.kind==="cb"?' class="cbrow"':""}><td class="num">${fmtDate(m.date)}</td><td>${esc(m.text)}</td><td class="num" style="text-align:right;color:var(--stamp)">${m.amt>0?inr(m.amt):""}</td><td class="num" style="text-align:right;color:var(--danger)">${m.amt<0?inr(-m.amt):""}</td><td class="num" style="text-align:right">${(m.bal<0?"- ":"")+inr(Math.abs(m.bal))}</td><td>${m.id?`<button class="btn small ghost" type="button" data-cbdel="${esc(m.id)}" title="Delete">✕</button>`:""}</td></tr>`).join("")
+      :`<tr><td colspan="6" class="empty">No cash in or out in these dates.</td></tr>`)+
+    `<tr class="prfloor"><td colspan="6">Closing cash on ${to?fmtDate(to):"today"}: ${cbMoney(B.close)}</td></tr>`;
+}
+$("cbForm").addEventListener("submit",e=>{
+  e.preventDefault(); const msg=$("cbMsg");
+  const amt=Math.round(Number($("cbAmt").value)||0), date=$("cbDate").value;
+  if(!date||amt<=0){ setMsg(msg,"err","Enter the date and an amount."); return; }
+  const c={id:uid("cb"),date,type:$("cbType").value,amount:amt,note:$("cbNote").value.trim(),by:CLOUD.on?CLOUD.email:"",at:new Date().toISOString()};
+  (soc.cash||(soc.cash=[])).push(c); persist();
+  $("cbAmt").value=""; $("cbNote").value="";
+  setMsg(msg,"ok",`Saved: ${CASH_TYPES[c.type].t} Rs. ${inr(amt)} on ${fmtDate(date)}.`); renderCashBook();
+});
+$("cbOpenSave").addEventListener("click",()=>{
+  if(ROLE!=="admin") return; const d=$("cbOpenDate").value;
+  if(!d){ setMsg($("cbMsg"),"err","Choose the date the cash was counted."); return; }
+  cfg.cash={openDate:d,openAmt:Math.round(Number($("cbOpenAmt").value)||0)}; persist(); renderCashBook();
+  setMsg($("cbMsg"),"ok",`Opening cash Rs. ${inr(cfg.cash.openAmt)} on ${fmtDate(d)} saved.`);
+});
+document.addEventListener("click",e=>{
+  const id=e.target.closest&&e.target.closest("[data-cbdel]")?.dataset.cbdel; if(!id) return;
+  if(ROLE!=="admin"){ setMsg($("cbMsg"),"err","Only the admin can delete a cash entry."); return; }
+  const c=(soc.cash||[]).find(x=>x.id===id); if(!c) return;
+  if(!confirm(`Delete this cash entry?\n${CASH_TYPES[c.type]?.t||""} Rs. ${inr(c.amount)} on ${fmtDate(c.date)}`)) return;
+  soc.cash=soc.cash.filter(x=>x.id!==id); persist(); renderCashBook(); setMsg($("cbMsg"),"ok","Cash entry deleted.");
+});
+async function cbPdf(share){
+  const msg=$("cbMsg"); if(!window.jspdf){ setMsg(msg,"err","The PDF maker could not load. Connect to the internet once and reload the app."); return; }
+  const from=$("cbFrom").value, to=$("cbTo").value, B=cashBook(from,to);
+  try{
+    const { jsPDF } = window.jspdf; const doc=new jsPDF({unit:"mm",format:"a4"}); const W=210,H=297,M=12;
+    const head=()=>{ doc.setFont("helvetica","bold"); doc.setFontSize(12.5); doc.setTextColor(24,33,58); doc.text(cfg.name,M,14,{maxWidth:W-2*M-60});
+      doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(93,104,134); doc.text([cfg.reg?"Reg. No. "+cfg.reg:"",cfg.address].filter(Boolean).join("  |  "),M,19.5,{maxWidth:W-2*M-60});
+      doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(35,64,168); doc.text("CASH BOOK",W-M,14,{align:"right"});
+      doc.setFont("helvetica","normal"); doc.setFontSize(8.5); doc.setTextColor(93,104,134); doc.text(`${from?fmtDate(from):"start"} to ${to?fmtDate(to):"today"}`,W-M,19.5,{align:"right"});
+      doc.setDrawColor(213,219,231); doc.setLineWidth(0.3); doc.line(M,23,W-M,23); return 28; };
+    let y=head();
+    y=pdfTable(doc,{y,M,W,H,head,cols:[{h:"Date",w:20},{h:"Particulars",w:96},{h:"Cash in",w:23,r:1},{h:"Cash out",w:23,r:1},{h:"Balance",w:24,r:1}],rows:[
+      {bold:true,fill:[238,241,246],cells:[from?fmtDate(from):"","Opening cash in hand","","",(B.open<0?"- ":"")+inr(Math.abs(B.open))]},
+      ...B.rows.map(m=>({cells:[fmtDate(m.date),m.text,m.amt>0?inr(m.amt):"",m.amt<0?inr(-m.amt):"",(m.bal<0?"- ":"")+inr(Math.abs(m.bal))]})),
+      {bold:true,fill:[223,242,232],cells:[to?fmtDate(to):"","Closing cash in hand",inr(B.tin),inr(B.tout),(B.close<0?"- ":"")+inr(Math.abs(B.close))]}]});
+    const n=doc.getNumberOfPages(), gen=new Date().toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"});
+    for(let i=1;i<=n;i++){ doc.setPage(i); doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(150,160,185); doc.text(`Generated ${gen}`,M,H-7); doc.text(`Page ${i} of ${n}`,W-M,H-7,{align:"right"}); }
+    const blob=doc.output("blob"), fname=`Stuti Avenue cash book ${from||"start"} to ${to||"today"}.pdf`;
+    if(share) await shareFile(blob,fname,msg,"application/pdf"); else { saveBlob(blob,fname); setMsg(msg,"ok","Cash book PDF downloaded."); }
+  }catch(err){ setMsg(msg,"err","Could not make the PDF: "+(err.message||err)); }
+}
+$("cbPdf").addEventListener("click",()=>cbPdf(false));
+$("cbShare").addEventListener("click",()=>cbPdf(true));
+["cbFrom","cbTo"].forEach(id=>$(id).addEventListener("change",renderCashBook));
+const _cbRenderReports=renderReports;
+renderReports=function(){ _cbRenderReports(); renderCashBook(); };
 /* ---------- local storage + backup ---------- */
 const KEY="stuti-avenue-receipts-v1", META="stuti-avenue-receipts-meta";
 const SEED={"config": {"address": "RESIDANCY SERVAY NO 367, PLOT NO. 327, OPP SOMCHINTAMANI APPT, TP 14, SURAT 395009", "cycle": "apr", "dueDays": 15, "extras": {"entry": 0, "flattx": 0, "nonocc": 0, "other": 0, "parking": 0, "repair": 0, "sharetx": 0, "sinking": 0}, "fmt": "plain", "name": "STUTI AVENUE CO. OP. HOUSING SOCIETY LTD D BLDG", "penaltyRate": 10, "prefix": "SA", "reg": "SRT/S 7124/ DT. 22/11/2012", "rentRate": 1700, "secretary": "", "selfRate": 1400, "startSeq": 1, "treasurer": ""}, "members": [{"id": "f02", "flatNo": "D-102", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f03", "flatNo": "D-103", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f04", "flatNo": "D-104", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f05", "flatNo": "D-201", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f06", "flatNo": "D-202", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f07", "flatNo": "D-203", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f08", "flatNo": "D-204", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f09", "flatNo": "D-301", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f10", "flatNo": "D-302", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f11", "flatNo": "D-303", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f12", "flatNo": "D-304", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f13", "flatNo": "D-401", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f14", "flatNo": "D-402", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f15", "flatNo": "D-403", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f17", "flatNo": "D-501", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f18", "flatNo": "D-502", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f19", "flatNo": "D-503", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f20", "flatNo": "D-504", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrpbvq1", "flatNo": "D-101", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrqe8qi", "flatNo": "D-404", "name": "", "mobile": "", "email": "", "occ": "self"}], "receipts": []};
