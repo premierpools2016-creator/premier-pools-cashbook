@@ -278,9 +278,10 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
           <label>Rate / month (Rs.)<input id="rRate" class="num" readonly></label>
           <label class="full xchk incm"><input type="checkbox" id="rIncMaint" checked> Include maintenance for a period</label>
           <div class="fields full" id="periodBox">
-            <label>Period from<input id="rFrom" type="date"></label>
-            <label>Period to<input id="rTo" type="date"></label>
-            <p class="hint full" id="periodHint" style="margin:-4px 0 0">Pick the start date; the end date fills in 6 months later. You can change either date.</p>
+            <label class="full">Maintenance period<select id="rPeriodSel"></select></label>
+            <label id="rFromBox" hidden>Period from<input id="rFrom" type="date"></label>
+            <label id="rToBox" hidden>Period to<input id="rTo" type="date"></label>
+            <p class="hint full" id="periodHint" style="margin:-4px 0 0"></p>
           </div>
           <fieldset>
             <legend>Other charges</legend>
@@ -923,8 +924,8 @@ $("rMember").addEventListener("change",()=>{
 const method = () => document.querySelector('input[name="method"]:checked').value;
 document.querySelectorAll('input[name="method"]').forEach(r=>r.addEventListener("change",update));
 $("rSeq").addEventListener("input",()=>{ $("rSeq").dataset.touched="1"; });
-$("rForm").addEventListener("input",update);
-$("rForm").addEventListener("change",update);
+$("rForm").addEventListener("input",()=>update());
+$("rForm").addEventListener("change",()=>update());
 
 const EXTRAS=[
   {k:"repair",label:"Repair fund"},
@@ -990,7 +991,7 @@ function formData(){
     mobile:$("rMobile").value.trim(), email:$("rEmail").value.trim(), occ:$("rOcc").value, rate, months,
     inclMaint:inc, maint:inc?rate*months:0, items, amount:items.reduce((s,i)=>s+i.amount,0),
     dueDate:due, lateDays:pi.days,
-    from, to, periodKey:inc&&from?from.slice(0,7):"", period:inc&&from&&to?`${fmtDate(from)} to ${fmtDate(to)}`:"", method:method(), remarks:$("rRemarks").value.trim()
+    from, to, periodKey:inc&&from?from.slice(0,7):"", period:inc&&from&&to?periodText(from,to):"", method:method(), remarks:$("rRemarks").value.trim()
   };
   if(d.method==="Online"){ d.txn=$("rTxn").value.trim(); d.via=$("rApp").value; }
   if(d.method==="Cheque"){ d.chqNo=$("rChqNo").value.trim(); d.chqDate=$("rChqDate").value; d.bank=$("rBank").value.trim(); d.branch=$("rBranch").value.trim(); }
@@ -1016,7 +1017,7 @@ function update(){
   const ph=$("periodHint");
   if(d.from && d.to && d.to<d.from){ ph.style.color="var(--danger)"; ph.textContent="The end date is before the start date."; }
   else if(d.months && d.months!==6){ ph.style.color="var(--danger)"; ph.textContent=`This period is ${d.months} months, so maintenance is worked out for ${d.months} months instead of 6.`; }
-  else { ph.style.color=""; ph.textContent="Pick the start date; the end date fills in 6 months later. You can change either date."; }
+  else { ph.style.color=""; ph.textContent=$("rPeriodSel").value==="custom"?"Pick the start date; the end date fills in 6 months later. You can change either date.":"Choose \"Other dates\" at the bottom of the list for a different period."; }
   $("amt").textContent = "Rs. "+inr(d.amount);
   if(!$("rSeq").dataset.touched || !$("rSeq").value) $("rSeq").value = nextSeq();
   renderPreview({...d, receiptNo:receiptNoFor(Number($("rSeq").value)||nextSeq(), d.date)});
@@ -3167,6 +3168,33 @@ $("fsShare").addEventListener("click",()=>fsPdf("share"));
 $("fsAll").addEventListener("click",()=>fsPdf("all"));
 const _ldRenderReports=renderReports;
 renderReports=function(){ _ldRenderReports(); renderFlatLedger(); };
+
+/* ---------- maintenance period picker ---------- */
+function psFull(p){ const N=["January","February","March","April","May","June","July","August","September","October","November","December"], e=new Date(p.start.getFullYear(),p.start.getMonth()+5,1); return `${N[p.start.getMonth()]} ${p.start.getFullYear()} to ${N[e.getMonth()]} ${e.getFullYear()}`; }
+function psEnd(p){ return isoOf(new Date(p.start.getFullYear(),p.start.getMonth()+6,0)); }
+function stdPeriodOf(from,to){ return periods().find(p=>isoOf(p.start)===from && psEnd(p)===to)||null; }
+function periodText(from,to){ const p=stdPeriodOf(from,to); return p?psFull(p):`${fmtDate(from)} to ${fmtDate(to)}`; }
+let psCustom=false;
+function syncPeriodSel(){
+  const sel=$("rPeriodSel"), from=$("rFrom").value, to=$("rTo").value, cur=currentPeriodKey();
+  const now=periods().findIndex(p=>p.key===cur), list=periods().slice(0,Math.max(0,now)+3).reverse();
+  sel.innerHTML=list.map(p=>`<option value="${p.key}">${psFull(p)}${p.key===cur?" (current)":""}</option>`).join("")+`<option value="custom">Other dates…</option>`;
+  const p=from&&to?stdPeriodOf(from,to):null;
+  const custom=psCustom||(from&&to&&!(p&&list.some(x=>x.key===p.key)));
+  sel.value=custom?"custom":(p?p.key:(list.find(x=>x.key===cur)||list[0]).key);
+  $("rFromBox").hidden=$("rToBox").hidden=!custom;
+}
+function psPick(){
+  const v=$("rPeriodSel").value;
+  if(v==="custom"){ psCustom=true; }
+  else { psCustom=false; const p=periods().find(x=>x.key===v); $("rFrom").value=isoOf(p.start); $("rTo").value=psEnd(p); $("rDue").dataset.touched=""; }
+}
+$("rPeriodSel").addEventListener("input",psPick); $("rPeriodSel").addEventListener("change",psPick);
+const _psUpdate=update;
+update=function(){ syncPeriodSel(); _psUpdate(); };
+const _psReset=resetForm;
+resetForm=function(){ psCustom=false; _psReset(); syncPeriodSel(); };
+setTimeout(()=>{ syncPeriodSel(); update(); },0);
 /* ---------- local storage + backup ---------- */
 const KEY="stuti-avenue-receipts-v1", META="stuti-avenue-receipts-meta";
 const SEED={"config": {"address": "RESIDANCY SERVAY NO 367, PLOT NO. 327, OPP SOMCHINTAMANI APPT, TP 14, SURAT 395009", "cycle": "apr", "dueDays": 15, "extras": {"entry": 0, "flattx": 0, "nonocc": 0, "other": 0, "parking": 0, "repair": 0, "sharetx": 0, "sinking": 0}, "fmt": "plain", "name": "STUTI AVENUE CO. OP. HOUSING SOCIETY LTD D BLDG", "penaltyRate": 10, "prefix": "SA", "reg": "SRT/S 7124/ DT. 22/11/2012", "rentRate": 1700, "secretary": "", "selfRate": 1400, "startSeq": 1, "treasurer": ""}, "members": [{"id": "f02", "flatNo": "D-102", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f03", "flatNo": "D-103", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f04", "flatNo": "D-104", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f05", "flatNo": "D-201", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f06", "flatNo": "D-202", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f07", "flatNo": "D-203", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f08", "flatNo": "D-204", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f09", "flatNo": "D-301", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f10", "flatNo": "D-302", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f11", "flatNo": "D-303", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f12", "flatNo": "D-304", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f13", "flatNo": "D-401", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f14", "flatNo": "D-402", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f15", "flatNo": "D-403", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f17", "flatNo": "D-501", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f18", "flatNo": "D-502", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f19", "flatNo": "D-503", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f20", "flatNo": "D-504", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrpbvq1", "flatNo": "D-101", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrqe8qi", "flatNo": "D-404", "name": "", "mobile": "", "email": "", "occ": "self"}], "receipts": []};
