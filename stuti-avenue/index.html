@@ -1165,10 +1165,17 @@ function buildPDF(r,docIn){
     if(r.remarks) info.push(["Remarks", r.remarks]);
     y+=5.5; doc.setFontSize(9);
     for(const [k,v] of info){
-      doc.setFont("helvetica","normal"); doc.setTextColor(93,104,134); doc.text(k, M, y);
+      const big=k==="Received from"||k==="Flat No.";
+      doc.setFontSize(9); doc.setFont("helvetica","normal"); doc.setTextColor(93,104,134); doc.text(k, M, y);
       doc.setFont("helvetica","bold"); doc.setTextColor(24,33,58);
+      if(k==="Flat No."){
+        doc.setFontSize(11); doc.text(String(r.flatNo), M+30, y); const fx=M+30+doc.getTextWidth(String(r.flatNo));
+        doc.setFontSize(9); doc.setFont("helvetica","normal"); doc.text(`  (${r.occ==="rented"?"Rented":"Self"})${r.mobile?"      Mobile: "+r.mobile:""}`, fx, y);
+        y+=5.3; continue;
+      }
+      if(big) doc.setFontSize(11);
       const lines=doc.splitTextToSize(String(v), W-2*M-30); doc.text(lines, M+30, y);
-      y+=4.8*lines.length;
+      y+=(big?5.3:4.8)*lines.length; doc.setFontSize(9);
     }
     // particulars table
     const sy=top+half-12, tableTop=y-1.5, headH=5.5, totH=6;
