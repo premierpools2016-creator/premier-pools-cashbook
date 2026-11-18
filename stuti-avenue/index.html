@@ -95,6 +95,10 @@ td.flat input{width:80px;font-family:var(--mono)}
 .stats b{color:var(--ink);font-family:var(--mono)}
 .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
 .empty{padding:28px;text-align:center;color:var(--muted)}
+.adjbox{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
+label.adjchk,#adjBox label.adjchk{display:flex!important;flex-direction:row!important;gap:10px;align-items:flex-start;font-size:14px;font-weight:500;text-transform:none;letter-spacing:0;color:var(--ink);cursor:pointer}
+.adjchk input{width:18px;height:18px;margin-top:2px;flex:none}
+#adjMarkBox{margin-top:8px}
 .cashnow{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:14px 16px;border-radius:12px;background:var(--carbon-soft);margin-bottom:14px}
 .cashnow span{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
 .cashnow b{font-size:26px;font-family:var(--mono,monospace);color:var(--ink)}
@@ -313,6 +317,15 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
               <label>Cheque date<input id="rChqDate" type="date"></label>
               <label>Bank name<input id="rBank"></label>
               <label>Branch<input id="rBranch"></label>
+            </div>
+            <div class="adjbox" id="adjBox">
+              <label class="adjchk" id="adjOnBox"><input type="checkbox" id="rAdjOn"> Part of this amount is adjusted against money D building owes the member</label>
+              <div class="fields" id="adjFields" hidden style="margin-top:8px">
+                <label>Adjusted amount (Rs.)<input type="number" id="rAdj" class="num" min="1" step="1" inputmode="numeric"></label>
+                <label><span><span id="adjRestLbl">Paid online</span> (Rs.)</span><input id="rAdjRest" class="num" readonly tabindex="-1"></label>
+              </div>
+              <p class="hint" id="adjHint" style="margin:6px 0 0"></p>
+              <label class="adjchk" id="adjMarkBox" hidden><input type="checkbox" id="rAdjMark" checked> Also mark the adjusted amount as repaid on the member's expense entry</label>
             </div>
           </fieldset>
           <label class="full">Remarks<input id="rRemarks" placeholder="Optional"></label>
@@ -1121,7 +1134,7 @@ $("rForm").addEventListener("submit", async e=>{
   if(rEdit){
     const old=receipts.find(r=>r.receiptNo===rEdit); if(!old){ msg.className="msg err"; msg.textContent="That receipt no longer exists."; endEdit(); return; }
     const rec={...old,...d,id:old.id||("r"+pad(old.seq,5)),seq:old.seq,receiptNo:old.receiptNo,createdAt:old.createdAt,by:old.by||"",editedAt:new Date().toISOString(),editedBy:CLOUD.on?CLOUD.email:""};
-    ["txn","via","chqNo","chqDate","bank","branch"].forEach(k=>{ if(!(k in d)) delete rec[k]; });
+    ["txn","via","chqNo","chqDate","bank","branch","adj"].forEach(k=>{ if(!(k in d)) delete rec[k]; });
     if(!(await verifyReceipt(rec,true))){ msg.className="msg"; msg.textContent="Not saved. Make your changes and tap Verify & update again."; return; }
     $("saveBtn").disabled=true;
     try{
@@ -2453,7 +2466,7 @@ async function buildAudit(fy,withPhotos){
   if(n.owed.length){ y=section(y+7,"Owed to members (paid from their own account, not yet repaid)");
     y=T(y,[{h:"Voucher",w:20},{h:"Date",w:22},{h:"Member",w:46},{h:"Expense",w:72},{h:"Rs.",w:26,r:1}],[...n.owed.map(x=>({cells:["V-"+pad(x.seq),fmtDate(x.date),`${x.payerFlat} ${x.payerName||""}`,exHeadText(x),inr(x.amount)]})),tot(["","","","Total owed",inr(n.owedSum)])]); }
   y=section(y+7,"Payment modes");
-  const mode=(arr,m)=>arr.filter(x=>x.method===m).reduce((s,x)=>s+(Number(x.amount)||0),0), cnt=(arr,m)=>arr.filter(x=>x.method===m).length;
+  const mode=(arr,m)=>arr.reduce((s,x)=>s+modeAmt(x,m),0), cnt=(arr,m)=>arr.filter(x=>modeAmt(x,m)>0).length;
   y=T(y,[{h:"Mode",w:46},{h:"Received (count)",w:30,r:1},{h:"Received Rs.",w:40,r:1},{h:"Paid (count)",w:30,r:1},{h:"Paid Rs.",w:40,r:1}],
     ["Cash","Online","Cheque","Adjusted"].map(m=>({cells:[m,cnt(rc,m),inr(mode(rc,m)),cnt(ex,m),inr(mode(ex,m))]})).filter(r=>r.cells[1]||r.cells[3]).concat(cnt(ex,"Member")?[{cells:["Paid by members",0,"0",cnt(ex,"Member"),inr(mode(ex,"Member"))]}]:[]));
 
@@ -2763,7 +2776,7 @@ function candidatesFor(t,loose){
     const used=usedKeys("receipt",t);
     for(const r of receipts){
       if(used.has(rKey(r))||r.method==="Cash"||r.method==="Adjusted") continue;
-      if(Math.abs((Number(r.amount)||0)-t.cr)>=0.5) continue;
+      if(Math.abs(paidPart(r)-t.cr)>=0.5) continue;
       const d=dayDiff(t.date, r.method==="Cheque"&&r.chqDate?r.chqDate:r.date); if(d<win[0]||d>win[1]) continue;
       out.push({type:"receipt",id:rKey(r),label:`Receipt ${r.receiptNo} · ${r.flatNo} ${r.name||""} · ${fmtDate(r.date)}`,score:(refHit(t,r.txn)||refHit(t,r.chqNo)?10:0)+(nameHit(t,r.name)||flatHit(t,r.flatNo)?3:0)-Math.abs(d)*0.1});
     }
@@ -2907,7 +2920,7 @@ function bankOpenAt(date){ // computed balance at the start of `date`
 function lastStatementBal(upto){ const rs=bankRows().filter(t=>t.bal!=null&&(!upto||t.date<=upto)); if(!rs.length) return null; const last=rs.reduce((a,t)=>t.date>a.date?t:a,rs[0]); const sameDay=rs.filter(t=>t.date===last.date); return {date:last.date,bal:sameDay[sameDay.length-1].bal}; }
 function appNotInBank(from,to){
   const inR=d=>d>=from&&d<=to, usedR=usedKeys("receipt"), usedE=usedKeys("expense"), usedP=usedKeys("repay"), out=[];
-  receipts.filter(r=>inR(r.date)&&["Online","Cheque"].includes(r.method)&&!usedR.has(rKey(r))).forEach(r=>out.push({date:r.date,text:`Receipt ${r.receiptNo} · ${r.flatNo} · ${r.method}${r.chqNo?" "+r.chqNo:""}`,amt:+r.amount,dir:"in"}));
+  receipts.filter(r=>inR(r.date)&&["Online","Cheque"].includes(r.method)&&!usedR.has(rKey(r))).forEach(r=>out.push({date:r.date,text:`Receipt ${r.receiptNo} · ${r.flatNo} · ${r.method}${r.chqNo?" "+r.chqNo:""}`,amt:paidPart(r),dir:"in"}));
   soc.expenses.filter(x=>!isMemberPaid(x)&&inR(x.date)&&["Online","Cheque"].includes(x.method)&&!usedE.has(x.id)).forEach(x=>out.push({date:x.date,text:`V-${pad(x.seq)} · ${exHeadText(x)} · ${x.method}${x.ref?" "+x.ref:""}`,amt:x.amount,dir:"out"}));
   soc.expenses.filter(isMemberPaid).forEach(x=>reimbsOf(x).forEach((r,i)=>{ if(inR(r.date)&&["Online","Cheque"].includes(r.method)&&!usedP.has(x.id+"#"+i)) out.push({date:r.date,text:`Repayment to ${x.payerFlat} · ${r.method}`,amt:+r.amount,dir:"out"}); }));
   return out.sort((a,b)=>a.date.localeCompare(b.date));
@@ -3023,7 +3036,7 @@ function prData(p){
     const parts=itemsOf(r), maint=parts.filter(i=>i.k==="maint").reduce((s,i)=>s+i.amount,0)||Number(r.amount)||0, extra=(Number(r.amount)||0)-maint;
     return {m,r,paid:true,due,maint,extra,total:Number(r.amount)||0}; });
   const paid=rows.filter(x=>x.paid), pend=rows.filter(x=>!x.paid), modes={};
-  paid.forEach(x=>{ const k=x.r.method||"Online"; modes[k]=(modes[k]||0)+x.total; });
+  paid.forEach(x=>{ const k=x.r.method||"Online", a=adjOf(x.r); modes[k]=(modes[k]||0)+x.total-(k==="Adjusted"?0:a); if(a&&k!=="Adjusted") modes.Adjusted=(modes.Adjusted||0)+a; });
   return {rows,paid,pend,collected:paid.reduce((s,x)=>s+x.total,0),maintCollected:paid.reduce((s,x)=>s+x.maint,0),pendingAmt:pend.reduce((s,x)=>s+x.due,0),modes};
 }
 function prPeriodObj(){ return stPeriods().find(x=>x.key===$("prPeriod").value); }
@@ -3263,7 +3276,7 @@ cloudError=function(err,col,item){
 };
 function cashMoves(){
   const out=[], o=cfg.cash||{}, start=o.openDate||"";
-  for(const r of receipts) if(r.method==="Cash") out.push({date:r.date,text:`Receipt ${r.receiptNo} · Flat ${r.flatNo}${r.name?" "+r.name:""}`,amt:Number(r.amount)||0,kind:"rc"});
+  for(const r of receipts) if(r.method==="Cash") out.push({date:r.date,text:`Receipt ${r.receiptNo} · Flat ${r.flatNo}${r.name?" "+r.name:""}${adjOf(r)?` (Rs. ${inr(adjOf(r))} adjusted)`:""}`,amt:paidPart(r),kind:"rc"});
   for(const x of soc.expenses){
     if(!isMemberPaid(x)){ if(x.method==="Cash") out.push({date:x.date,text:`Voucher V-${pad(x.seq)} · ${exHeadText(x)}${x.party?" · "+x.party:""}`,amt:-x.amount,kind:"ex"}); }
     else for(const r of reimbsOf(x)) if(r.method==="Cash"&&r.date) out.push({date:r.date,text:`Repaid to ${x.payerFlat||"member"} (V-${pad(x.seq)})`,amt:-(Number(r.amount)||0),kind:"ex"});
@@ -3342,6 +3355,60 @@ $("cbShare").addEventListener("click",()=>cbPdf(true));
 ["cbFrom","cbTo"].forEach(id=>$(id).addEventListener("change",renderCashBook));
 const _cbRenderReports=renderReports;
 renderReports=function(){ _cbRenderReports(); renderCashBook(); };
+
+/* ---------- split payment: part paid + part adjusted ---------- */
+function adjOf(r){ const a=Number(r.amount)||0; if(r.method==="Adjusted") return a; return Math.max(0,Math.min(a,Number(r.adj)||0)); }
+function paidPart(r){ return (Number(r.amount)||0)-adjOf(r); }
+function modeAmt(x,m){ if(m==="Adjusted") return x.method==="Adjusted"?(Number(x.amount)||0):adjOf(x); return x.method===m?(Number(x.amount)||0)-adjOf(x):0; }
+const METHOD_WORD={Online:"Paid online",Cash:"Paid in cash",Cheque:"Paid by cheque"};
+const _spPayLine=payLine;
+payLine=function(r){ const a=adjOf(r); if(!a||r.method==="Adjusted") return _spPayLine(r);
+  return `${_spPayLine(r)}: Rs. ${inr(paidPart(r))}  +  Adjusted: Rs. ${inr(a)} (against amount owed by D building to the member)`; };
+const _spPrMethod=prMethod;
+prMethod=function(r){ const a=adjOf(r); return a&&r.method!=="Adjusted"?`${_spPrMethod(r)} ${inr(paidPart(r))} + Adjusted ${inr(a)}`:_spPrMethod(r); };
+const _spModeWord=modeWord;
+modeWord=function(r){ return adjOf(r)&&r.method!=="Adjusted"?_spModeWord(r)+" + adjusted":_spModeWord(r); };
+function owedTo(memberId){ return soc.expenses.filter(x=>isMemberPaid(x)&&x.payerId===memberId&&remainingOf(x)>0).sort((a,b)=>a.date.localeCompare(b.date)); }
+function adjUI(){
+  const mth=method(), on=$("rAdjOn").checked&&mth!=="Adjusted";
+  $("adjOnBox").hidden=mth==="Adjusted"; $("adjFields").hidden=!on;
+  const owed=owedTo($("rMember").value), tot=owed.reduce((s,x)=>s+remainingOf(x),0);
+  const amount=formData().amount, a=mth==="Adjusted"?amount:(on?Math.min(amount,Math.round(Number($("rAdj").value)||0)):0);
+  $("adjRestLbl").textContent=METHOD_WORD[mth]||"Paid"; $("rAdjRest").value=on?inr(Math.max(0,amount-a)):"";
+  const h=$("adjHint");
+  if(!(on||mth==="Adjusted")){ h.textContent=tot?`D building owes this member Rs. ${inr(tot)} (${owed.map(x=>"V-"+pad(x.seq)).join(", ")}). Tick the box above to adjust part of it in this receipt.`:""; h.style.color=""; }
+  else if(!tot){ h.textContent="No amount is recorded in Expenses as owed to this member. Record the member-paid expense first so the adjustment is tracked."; h.style.color="var(--danger)"; }
+  else if(a>tot){ h.textContent=`Adjusted Rs. ${inr(a)} is more than the Rs. ${inr(tot)} D building owes this member (${owed.map(x=>"V-"+pad(x.seq)).join(", ")}).`; h.style.color="var(--danger)"; }
+  else { h.textContent=`D building owes this member Rs. ${inr(tot)} (${owed.map(x=>"V-"+pad(x.seq)+" Rs. "+inr(remainingOf(x))).join(", ")}). After this receipt: Rs. ${inr(tot-a)}.`; h.style.color=""; }
+  $("adjMarkBox").hidden=!(ROLE==="admin"&&!rEdit&&a>0&&tot>0);
+}
+const _spFormData=formData;
+formData=function(){ const d=_spFormData(); if(d.method!=="Adjusted"&&$("rAdjOn").checked){ const a=Math.round(Number($("rAdj").value)||0); if(a>0) d.adj=Math.min(a,d.amount); } return d; };
+const _spUpdate=update;
+update=function(){ _spUpdate(); adjUI(); };
+const _spReset=resetForm;
+resetForm=function(){ $("rAdjOn").checked=false; $("rAdj").value=""; $("rAdjMark").checked=true; _spReset(); adjUI(); };
+const _spStartEdit=startEdit;
+startEdit=function(no){ const r=receipts.find(x=>x.receiptNo===no); _spStartEdit(no); if(!r) return; $("rAdjOn").checked=!!(r.adj&&r.method!=="Adjusted"); $("rAdj").value=r.adj||""; update(); };
+let spPending=null;
+const _spVerify=verifyReceipt;
+verifyReceipt=async function(rec,isEdit){
+  const ok=await _spVerify(rec,isEdit); spPending=null;
+  if(ok&&!isEdit&&ROLE==="admin"&&$("rAdjMark").checked&&!$("adjMarkBox").hidden&&adjOf(rec)>0) spPending={id:rec.id,memberId:rec.memberId,amt:adjOf(rec),date:rec.date,no:rec.receiptNo};
+  return ok;
+};
+const _spShowShare=showShare;
+showShare=function(r){
+  _spShowShare(r);
+  if(!spPending||spPending.id!==r.id) return;
+  let left=spPending.amt; const done=[];
+  for(const x of owedTo(spPending.memberId)){ if(left<=0) break; const a=Math.min(left,remainingOf(x)); left-=a;
+    x.reimbs=[...reimbsOf(x),{date:spPending.date,amount:a,method:"Adjusted against maintenance",ref:"Receipt "+spPending.no,at:new Date().toISOString()}]; delete x.reimb; done.push(`V-${pad(x.seq)} Rs. ${inr(a)}`); }
+  spPending=null;
+  if(done.length){ persist(); renderExpenses(); renderAlerts(); const m=$("rMsg"); m.textContent+=` Marked as repaid on ${done.join(", ")}.`; }
+};
+$("rAdjOn").addEventListener("change",()=>{ if($("rAdjOn").checked&&!$("rAdj").value){ const tot=owedTo($("rMember").value).reduce((s,x)=>s+remainingOf(x),0); if(tot) $("rAdj").value=Math.min(tot,formData().amount); } update(); });
+setTimeout(adjUI,0);
 /* ---------- local storage + backup ---------- */
 const KEY="stuti-avenue-receipts-v1", META="stuti-avenue-receipts-meta";
 const SEED={"config": {"address": "RESIDANCY SERVAY NO 367, PLOT NO. 327, OPP SOMCHINTAMANI APPT, TP 14, SURAT 395009", "cycle": "apr", "dueDays": 15, "extras": {"entry": 0, "flattx": 0, "nonocc": 0, "other": 0, "parking": 0, "repair": 0, "sharetx": 0, "sinking": 0}, "fmt": "plain", "name": "STUTI AVENUE CO. OP. HOUSING SOCIETY LTD D BLDG", "penaltyRate": 10, "prefix": "SA", "reg": "SRT/S 7124/ DT. 22/11/2012", "rentRate": 1700, "secretary": "", "selfRate": 1400, "startSeq": 1, "treasurer": ""}, "members": [{"id": "f02", "flatNo": "D-102", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f03", "flatNo": "D-103", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f04", "flatNo": "D-104", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f05", "flatNo": "D-201", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f06", "flatNo": "D-202", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f07", "flatNo": "D-203", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f08", "flatNo": "D-204", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f09", "flatNo": "D-301", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f10", "flatNo": "D-302", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f11", "flatNo": "D-303", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f12", "flatNo": "D-304", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f13", "flatNo": "D-401", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f14", "flatNo": "D-402", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f15", "flatNo": "D-403", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f17", "flatNo": "D-501", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f18", "flatNo": "D-502", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f19", "flatNo": "D-503", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f20", "flatNo": "D-504", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrpbvq1", "flatNo": "D-101", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrqe8qi", "flatNo": "D-404", "name": "", "mobile": "", "email": "", "occ": "self"}], "receipts": []};
