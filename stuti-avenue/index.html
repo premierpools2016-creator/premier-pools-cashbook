@@ -95,6 +95,15 @@ td.flat input{width:80px;font-family:var(--mono)}
 .stats b{color:var(--ink);font-family:var(--mono)}
 .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
 .empty{padding:28px;text-align:center;color:var(--muted)}
+.owed{border:1px solid var(--line);border-radius:12px;padding:12px;margin:0 0 12px;background:color-mix(in srgb,var(--bad-soft) 35%,var(--paper))}
+.owed h3{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--danger)}
+.owrow{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.owrow>div{flex:1}
+.owform{margin:0 0 8px}
+.owlist{flex:1 1 100%;display:grid;gap:6px}
+.owlist .adjchk{font-size:13px;align-items:center}
+.owtot{flex:1 1 100%;font-size:14px}
+.owed .num{white-space:nowrap}
 .rpline{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
 .rpbtns{display:inline-flex;gap:6px}
 .repay label[hidden]{display:none!important}
@@ -467,6 +476,7 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
           <input id="exFSearch" placeholder="Search party, bill no.">
         </div>
         <div class="stats" id="exStats" style="margin:10px 0"></div>
+        <div id="owedBox"></div>
         <div class="cards" id="exList"></div>
 
         <div class="ledger" style="margin-top:16px">
@@ -1753,7 +1763,7 @@ function modeText(x){ if(!isMemberPaid(x)) return x.method+(x.ref?" "+x.ref:"");
 function memberPaidHTML(x){
   const rs=reimbsOf(x), rem=remainingOf(x);
   return `<div class="muted">Paid by <b>${esc(x.payerFlat)}${x.payerName?" "+esc(x.payerName):""}</b> from own account${x.payerMode?" ("+esc(x.payerMode.toLowerCase())+")":""}${x.remarks?" · "+esc(x.remarks):""}</div>
-  ${rs.map((r,i)=>`<div class="muted rpline">↳ Repaid Rs. ${inr(r.amount)} on ${fmtDate(r.date)} · ${esc(rpMode(r))}
+  ${rs.map((r,i)=>`<div class="muted rpline">↳ Repaid Rs. ${inr(r.amount)} on ${fmtDate(r.date)} · ${esc(rpMode(r))}${r.grp?` · <b>${esc(rvNo(r))}</b> (one payment of Rs. ${inr(grpTotal(r.grp))} for ${grpItems(r.grp).length} bills)`:""}
     <span class="rpbtns"><button class="btn small ghost" type="button" data-rpv="${x.id}#${i}">Voucher PDF</button><button class="btn small ghost" type="button" data-rpwa="${x.id}#${i}">WhatsApp</button></span></div>`).join("")}
   <div class="links" style="margin-top:4px">${!rem?`<span class="pill st-ok">Fully repaid</span>`
     :`<span class="pill st-bad">D building owes Rs. ${inr(rem)}</span><button class="btn small" type="button" data-exrepay="${x.id}">Record repayment</button>`}</div>
@@ -2805,6 +2815,11 @@ function candidatesFor(t,loose){
       out.push({type:"repay",id:key,label:`Repayment to ${x.payerFlat} · V-${pad(x.seq)} · ${fmtDate(r.date)}`,score:(refHit(t,r.ref)?10:0)+(flatHit(t,x.payerFlat)?3:0)-Math.abs(d)*0.1});
     });
   }
+  const usedG=usedKeys("repaygrp",t);
+  for(const g of allGroups()){ const it=grpItems(g); if(!it.length||usedG.has(g)) continue; const r=it[0].r;
+    if(!["Online","Cheque"].includes(r.method)||Math.abs(grpTotal(g)-t.dr)>=0.5) continue;
+    const d=dayDiff(t.date,r.date); if(d<win[0]||d>win[1]) continue;
+    out.push({type:"repaygrp",id:g,label:`Repayment ${rvNo(r)} to ${it[0].x.payerFlat} · ${it.length} bills · ${fmtDate(r.date)}`,score:(refHit(t,r.ref)?10:0)+(flatHit(t,it[0].x.payerFlat)?3:0)-Math.abs(d)*0.1}); }
   return out;
 }
 function autoOther(t){
@@ -2830,6 +2845,7 @@ function matchText(t){
   if(m.type==="other") return `${m.cat}${m.note?" – "+m.note:""}`;
   if(m.type==="receipt"){ const r=receipts.find(x=>rKey(x)===m.id); return r?`Receipt ${r.receiptNo} · ${r.flatNo} ${r.name||""}`:"Receipt (deleted)"; }
   if(m.type==="expense"){ const x=soc.expenses.find(v=>v.id===m.id); return x?`Voucher V-${pad(x.seq)} · ${exHeadText(x)}`:"Expense (deleted)"; }
+  if(m.type==="repaygrp"){ const g=grpItems(m.id); return g.length?`Repayment ${rvNo(g[0].r)} to ${g[0].x.payerFlat} (${g.map(o=>"V-"+pad(o.x.seq)).join(", ")})`:"Repayment (deleted)"; }
   if(m.type==="repay"){ const [id]=m.id.split("#"); const x=soc.expenses.find(v=>v.id===id); return x?`Repayment to ${x.payerFlat} (V-${pad(x.seq)})`:"Repayment (deleted)"; }
   return "";
 }
@@ -2933,7 +2949,8 @@ function appNotInBank(from,to){
   const inR=d=>d>=from&&d<=to, usedR=usedKeys("receipt"), usedE=usedKeys("expense"), usedP=usedKeys("repay"), out=[];
   receipts.filter(r=>inR(r.date)&&["Online","Cheque"].includes(r.method)&&!usedR.has(rKey(r))).forEach(r=>out.push({date:r.date,text:`Receipt ${r.receiptNo} · ${r.flatNo} · ${r.method}${r.chqNo?" "+r.chqNo:""}`,amt:paidPart(r),dir:"in"}));
   soc.expenses.filter(x=>!isMemberPaid(x)&&inR(x.date)&&["Online","Cheque"].includes(x.method)&&!usedE.has(x.id)).forEach(x=>out.push({date:x.date,text:`V-${pad(x.seq)} · ${exHeadText(x)} · ${x.method}${x.ref?" "+x.ref:""}`,amt:x.amount,dir:"out"}));
-  soc.expenses.filter(isMemberPaid).forEach(x=>reimbsOf(x).forEach((r,i)=>{ if(inR(r.date)&&["Online","Cheque"].includes(r.method)&&!usedP.has(x.id+"#"+i)) out.push({date:r.date,text:`Repayment to ${x.payerFlat} · ${r.method}`,amt:+r.amount,dir:"out"}); }));
+  soc.expenses.filter(isMemberPaid).forEach(x=>reimbsOf(x).forEach((r,i)=>{ if(!r.grp&&inR(r.date)&&["Online","Cheque"].includes(r.method)&&!usedP.has(x.id+"#"+i)) out.push({date:r.date,text:`Repayment to ${x.payerFlat} · ${r.method}`,amt:+r.amount,dir:"out"}); }));
+  const usedG=usedKeys("repaygrp"); allGroups().forEach(g=>{ const it=grpItems(g), r=it[0]&&it[0].r; if(r&&inR(r.date)&&["Online","Cheque"].includes(r.method)&&!usedG.has(g)) out.push({date:r.date,text:`Repayment ${rvNo(r)} to ${it[0].x.payerFlat} · ${r.method}${r.ref?" "+r.ref:""}`,amt:grpTotal(g),dir:"out"}); });
   return out.sort((a,b)=>a.date.localeCompare(b.date));
 }
 function bkFiltered(){
@@ -3436,6 +3453,7 @@ $("exList").addEventListener("click",e=>{
   if(rp){ const box=$("rp-"+rp); if(box&&!box.hidden){ const b=box.querySelector("[data-f=bank]"); if(b&&!b.value&&cfg.bank&&cfg.bank.name) b.value=cfg.bank.name; rpToggle(box); } }
   const v=e.target.dataset&&(e.target.dataset.rpv||e.target.dataset.rpwa); if(!v) return;
   const [id,i]=v.split("#"), x=soc.expenses.find(y=>y.id===id), r=x&&reimbsOf(x)[Number(i)]; if(!r) return;
+  if(r.grp){ if(e.target.dataset.rpv) grpVoucher(r.grp); else grpWhatsApp(r.grp); return; }
   if(e.target.dataset.rpv) rpVoucher(x,r,Number(i)); else rpWhatsApp(x,r);
 });
 function rpVoucherNo(x,i){ return `V-${pad(x.seq)}/R${i+1}`; }
@@ -3473,6 +3491,93 @@ async function rpVoucher(x,r,i){
     draw(0,"Society copy"); doc.setLineDashPattern([2,2],0); doc.setDrawColor(160,170,190); doc.line(8,half,W-8,half); doc.setLineDashPattern([],0); draw(half,"Member copy");
     saveBlob(doc.output("blob"),`Payment voucher ${rpVoucherNo(x,i).replace(/\//g,"-")} ${x.payerFlat}.pdf`);
     setMsg(msg,"ok",`Voucher ${rpVoucherNo(x,i)} downloaded. Print it and take the member's signature on the society copy.`);
+  }catch(err){ setMsg(msg,"err","Could not make the PDF: "+(err.message||err)); }
+}
+
+/* ---------- one repayment (cheque) for several bills of one member ---------- */
+function allGroups(){ const s=new Set(); soc.expenses.forEach(x=>reimbsOf(x).forEach(r=>{ if(r.grp) s.add(r.grp); })); return [...s]; }
+function grpItems(g){ const out=[]; soc.expenses.forEach(x=>reimbsOf(x).forEach((r,i)=>{ if(r.grp===g) out.push({x,r,i}); })); return out.sort((a,b)=>a.x.date.localeCompare(b.x.date)||a.x.seq-b.x.seq); }
+function grpTotal(g){ return grpItems(g).reduce((s,o)=>s+(Number(o.r.amount)||0),0); }
+function rvNo(r){ return r.rv?`RV-${pad(r.rv)}`:""; }
+function nextRv(){ let m=0; soc.expenses.forEach(x=>reimbsOf(x).forEach(r=>{ m=Math.max(m,Number(r.rv)||0); })); return m+1; }
+let owOpen=null;
+function renderOwed(){
+  const box=$("owedBox"); if(ROLE!=="admin"){ box.innerHTML=""; return; }
+  const by={}; owedAsOf().forEach(x=>{ (by[x.payerId]=by[x.payerId]||{flat:x.payerFlat,name:x.payerName,list:[]}).list.push(x); });
+  const ids=Object.keys(by).sort((a,b)=>flatSort({flatNo:by[a].flat},{flatNo:by[b].flat}));
+  if(!ids.length){ box.innerHTML=""; return; }
+  box.innerHTML=`<div class="owed"><h3>Owed to members</h3>${ids.map(id=>{ const o=by[id], tot=o.list.reduce((s,x)=>s+x.amount,0);
+    return `<div class="owrow"><div><b>${esc(o.flat)}</b> ${esc(o.name||"")}<div class="muted" style="font-size:12px">${o.list.length} bill${o.list.length>1?"s":""}: ${o.list.map(x=>"V-"+pad(x.seq)).join(", ")}</div></div><b class="num">Rs. ${inr(tot)}</b>
+      <button class="btn small" type="button" data-owpay="${esc(id)}">${o.list.length>1?"Repay together":"Repay"}</button></div>
+      ${owOpen===id?owForm(id,o.list):""}`; }).join("")}</div>`;
+}
+function owForm(id,list){
+  return `<div class="repay owform" id="owf">
+    <div class="owlist">${list.map(x=>`<label class="adjchk"><input type="checkbox" data-owx="${x.id}" checked> V-${pad(x.seq)} · ${fmtDate(x.date)} · ${esc(exHeadText(x))}${x.party?" · "+esc(x.party):""} <b class="num" style="margin-left:auto">Rs. ${inr(x.amount)}</b></label>`).join("")}</div>
+    <div class="owtot">Total to repay: <b id="owTot" class="num"></b></div>
+    <label>Date repaid<input type="date" data-f="date" value="${todayISO()}"></label>
+    <label>Paid by<select data-f="mode"><option>Cheque</option><option>Online</option><option>Cash</option></select></label>
+    <label data-show="Cheque Online"><span data-reflbl>Cheque no.</span><input data-f="ref"></label>
+    <label data-show="Cheque">Cheque date<input type="date" data-f="chqDate"></label>
+    <label data-show="Cheque Online">Society bank<input data-f="bank" value="${esc(cfg.bank&&cfg.bank.name||"")}"></label>
+    <div style="flex:1 1 100%;display:flex;gap:8px"><button class="btn small" type="button" data-owsave="${esc(id)}">Save repayment</button><button class="btn small ghost" type="button" data-owcancel>Cancel</button></div>
+  </div>`;
+}
+function owTotal(){ const f=$("owf"); if(!f) return 0; let t=0; f.querySelectorAll("[data-owx]").forEach(c=>{ if(c.checked){ const x=soc.expenses.find(v=>v.id===c.dataset.owx); t+=x?remainingOf(x):0; } }); $("owTot").textContent="Rs. "+inr(t); return t; }
+$("owedBox").addEventListener("change",e=>{ if(e.target.dataset.owx!==undefined) owTotal(); if(e.target.dataset.f==="mode") rpToggle($("owf")); });
+$("owedBox").addEventListener("click",e=>{
+  const d=e.target.dataset||{};
+  if(d.owpay){ owOpen=owOpen===d.owpay?null:d.owpay; renderOwed(); if(owOpen){ rpToggle($("owf")); owTotal(); } return; }
+  if(d.owcancel!==undefined){ owOpen=null; renderOwed(); return; }
+  if(d.owsave){ const f=$("owf"), msg=$("exMsg"), q=k=>f.querySelector(`[data-f=${k}]`).value.trim();
+    const xs=[...f.querySelectorAll("[data-owx]")].filter(c=>c.checked).map(c=>soc.expenses.find(v=>v.id===c.dataset.owx)).filter(Boolean);
+    const date=q("date"), md=q("mode");
+    if(!xs.length){ setMsg(msg,"err","Tick at least one bill."); return; }
+    if(!date){ setMsg(msg,"err","Enter the date repaid."); return; }
+    if(md==="Cheque"&&!q("ref")){ setMsg(msg,"err","Enter the cheque number."); return; }
+    const g=uid("rg"), rv=nextRv(), at=new Date().toISOString(); let tot=0;
+    xs.forEach(x=>{ const a=remainingOf(x); tot+=a; const rr={date,amount:a,method:md,grp:g,rv,at};
+      if(md!=="Cash"){ if(q("ref")) rr.ref=q("ref"); if(q("bank")) rr.bank=q("bank"); } if(md==="Cheque"&&q("chqDate")) rr.chqDate=q("chqDate");
+      x.reimbs=[...reimbsOf(x),rr]; delete x.reimb; });
+    owOpen=null; persist(); renderExpenses(); renderAlerts();
+    setMsg(msg,"ok",`Repayment RV-${pad(rv)} of Rs. ${inr(tot)} to ${xs[0].payerFlat} for ${xs.length} bill${xs.length>1?"s":""} saved. Tap "Voucher PDF" on any of these bills for the member to sign.`); return; }
+});
+const _owRenderExpenses=renderExpenses;
+renderExpenses=function(){ _owRenderExpenses(); renderOwed(); if(owOpen&&$("owf")){ rpToggle($("owf")); owTotal(); } };
+
+function grpWhatsApp(g){
+  const it=grpItems(g); if(!it.length) return; const x0=it[0].x, r=it[0].r, m=members.find(y=>y.id===x0.payerId), num=String(m?.mobile||"").replace(/\D/g,"");
+  const t=`*${cfg.name}*\nDear ${x0.payerName||"Member"} (Flat ${x0.payerFlat}),\n\nRs. ${inr(grpTotal(g))}/- has been repaid to you on ${fmtDate(r.date)} by ${rpMode(r)} (${rvNo(r)}).\nThis covers the amounts you paid on behalf of D building:\n${it.map(o=>`• ${fmtDate(o.x.date)} ${exHeadText(o.x)}${o.x.party?" ("+o.x.party+")":""} – Rs. ${inr(o.r.amount)}`).join("\n")}\n\nThank you for your help.`;
+  window.open(`https://wa.me/${num.length===10?"91"+num:num}?text=${encodeURIComponent(t)}`,"_blank","noopener");
+}
+async function grpVoucher(g){
+  const msg=$("exMsg"); if(!window.jspdf){ setMsg(msg,"err","The PDF maker could not load. Connect to the internet once and reload the app."); return; }
+  const it=grpItems(g); if(!it.length) return; const x0=it[0].x, r=it[0].r, tot=grpTotal(g);
+  try{
+    const { jsPDF } = window.jspdf; const doc=new jsPDF({unit:"mm",format:"a4"}); const W=210,H=297,half=H/2,M=14;
+    const draw=(oy,label)=>{
+      let y=oy+14;
+      doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.setTextColor(24,33,58); doc.text(cfg.name,W/2,y,{align:"center",maxWidth:W-2*M});
+      doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(93,104,134); doc.text([cfg.reg?"Reg. No. "+cfg.reg:"",cfg.address].filter(Boolean).join("  |  "),W/2,y+5,{align:"center",maxWidth:W-2*M});
+      doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(35,64,168); doc.text(label.toUpperCase(),W-M,oy+8,{align:"right"});
+      y+=12; doc.setFillColor(238,241,246); doc.rect(M,y-5,W-2*M,8,"F");
+      doc.setFontSize(11); doc.setTextColor(24,33,58); doc.text("PAYMENT VOUCHER  ·  Repayment to member",W/2,y,{align:"center"});
+      y+=9; doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(93,104,134); doc.text(`Voucher No. ${rvNo(r)}`,M,y); doc.text(`Date: ${fmtDate(r.date)}`,W-M,y,{align:"right"}); y+=6;
+      const row=(k,v)=>{ doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(93,104,134); doc.text(k,M,y); doc.setFont("helvetica","bold"); doc.setFontSize(11); doc.setTextColor(24,33,58); doc.text(String(v),M+38,y); y+=5.6; };
+      row("Paid to",x0.payerName||"Member"); row("Flat No.",x0.payerFlat||"");
+      doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(93,104,134); doc.text("Payment mode",M,y); doc.setFont("helvetica","bold"); doc.setTextColor(24,33,58); doc.text(rpMode(r),M+38,y,{maxWidth:W-2*M-38}); y+=4;
+      const n=it.length, fs=n>6?7.5:8.5, rh=n>6?4.2:5;
+      y=pdfTable(doc,{y,M,W,H:oy+half-22+10,head:()=>y,cols:[{h:"Bill paid by member",w:22},{h:"Expense",w:70},{h:"Paid to",w:56},{h:"Rs.",w:34,r:1}],rows:[
+        ...it.map(o=>({cells:[`${fmtDate(o.x.date)} V-${pad(o.x.seq)}`,exHeadText(o.x),o.x.party||"",inr(o.r.amount)]})),
+        {bold:true,fill:[223,242,232],cells:["","Total repaid","",inr(tot)]}]});
+      doc.setFont("helvetica","normal"); doc.setFontSize(fs); doc.setTextColor(24,33,58); doc.text(`Rupees ${words(tot)} Only`,M,y+4,{maxWidth:W-2*M});
+      const sy=oy+half-10; doc.setFontSize(8.5); doc.setTextColor(93,104,134); doc.setDrawColor(150,160,185); doc.setLineWidth(0.3);
+      [["Received by (member)",M],["Treasurer",W/2-18],["Secretary / Chairman",W-M-40]].forEach(([t,xx])=>{ doc.line(xx,sy-5,xx+40,sy-5); doc.text(t,xx,sy); });
+      void rh;
+    };
+    draw(0,"Society copy"); doc.setLineDashPattern([2,2],0); doc.setDrawColor(160,170,190); doc.line(8,half,W-8,half); doc.setLineDashPattern([],0); draw(half,"Member copy");
+    saveBlob(doc.output("blob"),`Payment voucher ${rvNo(r)} ${x0.payerFlat}.pdf`);
+    setMsg(msg,"ok",`Voucher ${rvNo(r)} downloaded (${it.length} bills, Rs. ${inr(tot)}). Print it and take the member's signature on the society copy.`);
   }catch(err){ setMsg(msg,"err","Could not make the PDF: "+(err.message||err)); }
 }
 /* ---------- local storage + backup ---------- */
