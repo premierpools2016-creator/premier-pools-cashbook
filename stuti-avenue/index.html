@@ -95,6 +95,9 @@ td.flat input{width:80px;font-family:var(--mono)}
 .stats b{color:var(--ink);font-family:var(--mono)}
 .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
 .empty{padding:28px;text-align:center;color:var(--muted)}
+.bkdue{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;background:var(--carbon-soft);color:var(--ink);border:1px solid var(--line)}
+.bkdbtns{display:inline-flex;gap:8px;flex-wrap:wrap}
+.bkrem{margin-top:16px;padding:12px;border:1px dashed var(--line);border-radius:12px;display:grid;gap:6px;justify-items:start}
 .owed{border:1px solid var(--line);border-radius:12px;padding:12px;margin:0 0 12px;background:color-mix(in srgb,var(--bad-soft) 35%,var(--paper))}
 .owed h3{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--danger)}
 .owrow{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
@@ -277,6 +280,7 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
     </nav>
   </header>
   <div id="banner" class="banner" hidden></div>
+  <div id="bkDue" class="banner bkdue" hidden></div>
   <div id="cloudbar" class="banner" hidden></div>
   <div id="alerts" class="alerts" hidden></div>
 
@@ -808,7 +812,7 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
   <section id="tab-backup" hidden>
     <div class="panel" style="max-width:720px">
       <h2>Backup &amp; restore</h2>
-      <p style="margin:0 0 12px">All members, receipts, expenses with bill photos, tasks, contacts and documents are saved on this phone only. Save a backup file to JioCloud after every few entries, so nothing is lost if the phone is changed, reset or the browser data is cleared.</p>
+      <p style="margin:0 0 12px">Save a full copy of members, receipts, expenses with bill photos, bank, cash book, tasks, contacts and documents as one file in JioCloud. The app reminds you when the next backup is due.</p>
       <div class="stats" id="bkStats" style="margin-bottom:6px"></div>
       <div class="actions">
         <button class="btn" type="button" id="bkShare">Save backup to JioCloud</button>
@@ -818,6 +822,11 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
       </div>
       <div id="bkConfirm" class="share" hidden></div>
       <div class="msg" id="bkMsg" role="status"></div>
+      <div class="bkrem">
+        <label>Remind me to back up every<select id="bkEvery"><option value="7">7 days</option><option value="15">15 days</option><option value="30">30 days</option><option value="0">Never</option></select></label>
+        <p class="hint" id="bkNext" style="margin:6px 0 0"></p>
+        <a class="btn ghost small" id="bkCal" target="_blank" rel="noopener">Add repeating reminder to Google Calendar</a>
+      </div>
       <h2 style="margin-top:22px">How to keep the backup in JioCloud</h2>
       <ol style="margin:0;padding-left:20px;display:grid;gap:6px">
         <li>Press <b>Save backup to JioCloud</b>. Your phone's share menu opens.</li>
@@ -3580,6 +3589,32 @@ async function grpVoucher(g){
     setMsg(msg,"ok",`Voucher ${rvNo(r)} downloaded (${it.length} bills, Rs. ${inr(tot)}). Print it and take the member's signature on the society copy.`);
   }catch(err){ setMsg(msg,"err","Could not make the PDF: "+(err.message||err)); }
 }
+
+/* ---------- backup reminder every N days ---------- */
+function bkEvery(){ const m=meta(); return m.bkEvery===undefined?15:Number(m.bkEvery); }
+function lastBackup(){ const a=meta().backupAt||"", b=(cfg.backupAt||""); return a>b?a:b; }
+function bkDueDays(){ const n=bkEvery(); if(!n) return null; const l=lastBackup(); if(!l) return 0; return Math.ceil(n-(Date.now()-new Date(l))/864e5); }
+function renderBkDue(){
+  const box=$("bkDue"), mayBackup=!CLOUD.on||ROLE==="admin", has=receipts.length||soc.expenses.length;
+  const d=bkDueDays(), l=lastBackup();
+  $("bkEvery").value=String(bkEvery());
+  $("bkNext").textContent=!bkEvery()?"No reminder.":!l?"No backup saved yet from this app.":d>0?`Last backup ${fmtDate(l.slice(0,10))}. Next reminder in ${d} day${d>1?"s":""}.`:`Last backup ${fmtDate(l.slice(0,10))}. Backup is due now.`;
+  const n=bkEvery()||15, start=new Date(Date.now()+864e5); const ds=`${start.getFullYear()}${pad(start.getMonth()+1,2)}${pad(start.getDate(),2)}`;
+  $("bkCal").href=`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent("Stuti Avenue app – save backup to JioCloud")}&dates=${ds}T043000Z/${ds}T044500Z&recur=${encodeURIComponent("RRULE:FREQ=DAILY;INTERVAL="+n)}&details=${encodeURIComponent("Open the Stuti Avenue app → Backup → Save backup to JioCloud → choose JioCloud.\n"+location.href)}`;
+  if(!mayBackup||!has||d===null||d>0||sessionStorage.getItem("bkSnooze")){ box.hidden=true; return; }
+  box.hidden=false;
+  box.innerHTML=`<b>${l?`${bkEvery()}-day backup due`:"No backup yet"}.</b> ${l?`Last backup was on ${fmtDate(l.slice(0,10))}.`:""} Save a copy of all society data to JioCloud. <span class="bkdbtns"><button class="btn small" type="button" id="bkDueGo">Save backup to JioCloud</button><button class="btn small ghost" type="button" id="bkDueLater">Later</button></span>`;
+}
+document.addEventListener("click",e=>{
+  if(e.target.id==="bkDueGo"){ doBackup(true); }
+  if(e.target.id==="bkDueLater"){ try{ sessionStorage.setItem("bkSnooze","1"); }catch(_){} $("bkDue").hidden=true; }
+});
+$("bkEvery").addEventListener("change",()=>{ setMeta({bkEvery:Number($("bkEvery").value)}); renderBkDue(); });
+const _bkSetMeta=setMeta;
+setMeta=function(p){ _bkSetMeta(p); if(p&&p.backupAt){ if(CLOUD.on&&ROLE==="admin"){ cfg.backupAt=p.backupAt; try{ persist(); }catch(_){} } setTimeout(renderBkDue,0); } };
+const _bkStatus=backupStatus;
+backupStatus=function(){ _bkStatus(); try{ renderBkDue(); }catch(_){} };
+setTimeout(()=>{ try{ renderBkDue(); }catch(_){} },1500);
 /* ---------- local storage + backup ---------- */
 const KEY="stuti-avenue-receipts-v1", META="stuti-avenue-receipts-meta";
 const SEED={"config": {"address": "RESIDANCY SERVAY NO 367, PLOT NO. 327, OPP SOMCHINTAMANI APPT, TP 14, SURAT 395009", "cycle": "apr", "dueDays": 15, "extras": {"entry": 0, "flattx": 0, "nonocc": 0, "other": 0, "parking": 0, "repair": 0, "sharetx": 0, "sinking": 0}, "fmt": "plain", "name": "STUTI AVENUE CO. OP. HOUSING SOCIETY LTD D BLDG", "penaltyRate": 10, "prefix": "SA", "reg": "SRT/S 7124/ DT. 22/11/2012", "rentRate": 1700, "secretary": "", "selfRate": 1400, "startSeq": 1, "treasurer": ""}, "members": [{"id": "f02", "flatNo": "D-102", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f03", "flatNo": "D-103", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f04", "flatNo": "D-104", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f05", "flatNo": "D-201", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f06", "flatNo": "D-202", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f07", "flatNo": "D-203", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f08", "flatNo": "D-204", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f09", "flatNo": "D-301", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f10", "flatNo": "D-302", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f11", "flatNo": "D-303", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f12", "flatNo": "D-304", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f13", "flatNo": "D-401", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f14", "flatNo": "D-402", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f15", "flatNo": "D-403", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f17", "flatNo": "D-501", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f18", "flatNo": "D-502", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f19", "flatNo": "D-503", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f20", "flatNo": "D-504", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrpbvq1", "flatNo": "D-101", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrqe8qi", "flatNo": "D-404", "name": "", "mobile": "", "email": "", "occ": "self"}], "receipts": []};
