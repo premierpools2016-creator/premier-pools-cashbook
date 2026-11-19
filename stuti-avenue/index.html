@@ -95,6 +95,8 @@ td.flat input{width:80px;font-family:var(--mono)}
 .stats b{color:var(--ink);font-family:var(--mono)}
 .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
 .empty{padding:28px;text-align:center;color:var(--muted)}
+.seenrow{cursor:pointer}
+.seenhist{display:grid;gap:3px;font-size:12px;color:var(--muted);padding:4px 0 4px 8px;border-left:3px solid var(--line)}
 .bkdue{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;background:var(--carbon-soft);color:var(--ink);border:1px solid var(--line)}
 .bkdbtns{display:inline-flex;gap:8px;flex-wrap:wrap}
 .bkrem{margin-top:16px;padding:12px;border:1px dashed var(--line);border-radius:12px;display:grid;gap:6px;justify-items:start}
@@ -921,6 +923,17 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
         </details>
       </div>
       <textarea id="olRulesTxt" rows="8" readonly hidden style="margin-top:10px;font-family:var(--mono);font-size:11px"></textarea>
+    </div>
+
+    <div class="panel" id="seenPanel" style="max-width:760px;margin-top:16px" hidden>
+      <h2>Who is using the app</h2>
+      <p style="margin:0 0 12px">Last time each person opened the app, on which device, and how many entries they made. "Online now" means the app is open on their phone right now.</p>
+      <div class="banner errbar" id="seenRules" hidden>To see this list, the online database rules need one update. Open <b>Online sharing</b> above, tap <b>Copy security rules</b>, then paste them in Firebase → Firestore Database → Rules and tap Publish.</div>
+      <div class="tbl"><table class="prtbl">
+        <thead><tr><th>Person</th><th>Role</th><th>Last seen</th><th>Device</th><th style="text-align:right">Entries</th></tr></thead>
+        <tbody id="seenBody"></tbody>
+      </table></div>
+      <p class="hint" style="margin:8px 0 0">Tap a person to see their last 30 times opening the app.</p>
     </div>
 
   </section>
@@ -2347,6 +2360,7 @@ service cloud.firestore {
     match /config/{id} { allow read: if canRead(); allow write: if isAdmin(); }
     match /members/{id} { allow read: if canRead(); allow write: if isAdmin(); }
 ${["receipts","expenses","contacts","docs","cash"].map(std).join("\n")}
+    match /seen/{id} { allow read: if isAdmin() || (signedIn() && id == email()); allow write: if signedIn() && id == email(); }
     match /files/{id} { allow read: if canRead(); allow create: if canAdd(); allow update, delete: if isAdmin();
       match /chunks/{n} { allow read: if canRead(); allow create: if canAdd(); allow update, delete: if isAdmin(); } }
     match /reminders/{id} { allow read: if canRead(); allow create: if canAdd(); allow update: if isAdmin() || (isEntry() && onlyKeys(['due','lastDone'])); allow delete: if isAdmin(); }
@@ -3615,6 +3629,61 @@ setMeta=function(p){ _bkSetMeta(p); if(p&&p.backupAt){ if(CLOUD.on&&ROLE==="admi
 const _bkStatus=backupStatus;
 backupStatus=function(){ _bkStatus(); try{ renderBkDue(); }catch(_){} };
 setTimeout(()=>{ try{ renderBkDue(); }catch(_){} },1500);
+
+/* ---------- who is using the app ---------- */
+let SEEN=[], seenOpen=null, seenUnsub=null, seenBlocked=false, seenTimer=0;
+function deviceName(){
+  const u=navigator.userAgent; let os=/Android/.test(u)?"Android":/iPhone|iPad/.test(u)?"iPhone":/Windows/.test(u)?"Windows PC":/Mac OS/.test(u)?"Mac":/Linux/.test(u)?"Linux":"Device";
+  const m=u.match(/Android [\d.]+; ([^;)]+?)(?: Build|\))/); if(m&&m[1]&&!/^K$/.test(m[1])) os+=" · "+m[1].trim();
+  const b=/EdgA?\//.test(u)?"Edge":/SamsungBrowser/.test(u)?"Samsung Internet":/Chrome\//.test(u)?"Chrome":/Safari\//.test(u)?"Safari":/Firefox\//.test(u)?"Firefox":"";
+  const app=(window.matchMedia&&matchMedia("(display-mode: standalone)").matches)?"app icon":"browser";
+  return `${os}${b?" · "+b:""} (${app})`;
+}
+async function seenPing(open){
+  if(!CLOUD.on||!fdb||!CLOUD.email) return;
+  const ref=fdb.collection("seen").doc(CLOUD.email), now=new Date().toISOString(), dev=deviceName();
+  try{
+    if(open){
+      const s=await ref.get(), d=s.exists?s.data():{}; let hist=Array.isArray(d.hist)?d.hist:[];
+      const last=hist[0]; if(!last||Date.now()-new Date(last.at)>30*60000||last.device!==dev) hist=[{at:now,device:dev},...hist].slice(0,30);
+      await ref.set({email:CLOUD.email,role:ROLE,at:now,device:dev,hist,first:d.first||now});
+    } else await ref.set({at:now,device:dev,role:ROLE},{merge:true});
+  }catch(err){ /* rules not updated yet: stay quiet for the person using the app */ }
+}
+function seenWatch(){
+  if(ROLE!=="admin"||!CLOUD.on||!fdb||seenUnsub) return;
+  seenUnsub=fdb.collection("seen").onSnapshot(s=>{ seenBlocked=false; SEEN=s.docs.map(d=>({id:d.id,...d.data()})); renderSeen(); },
+    err=>{ seenUnsub=null; if(err&&err.code==="permission-denied"){ seenBlocked=true; renderSeen(); } });
+}
+function ago(iso){ const m=Math.round((Date.now()-new Date(iso))/60000); if(m<6) return "Online now"; if(m<60) return m+" min ago"; const h=Math.round(m/60); if(h<24) return h+" hr ago"; const d=Math.round(h/24); return d===1?"Yesterday":d+" days ago"; }
+function seenWhen(iso){ return new Date(iso).toLocaleString("en-IN",{day:"2-digit",month:"short",hour:"numeric",minute:"2-digit"}); }
+function personName(email){
+  if(email===lc(CLOUD.roles?.admin||"")) return "Admin";
+  const m=members.find(x=>lc(x.email)===email); if(m) return `${m.flatNo}${m.name?" "+m.name:""}`;
+  return isLoginEmail(email)?`Login ID: ${shortName(email)}`:email;
+}
+function renderSeen(){
+  const p=$("seenPanel"); if(!p) return; p.hidden=!(CLOUD.on&&ROLE==="admin"); if(p.hidden) return;
+  $("seenRules").hidden=!seenBlocked;
+  const r=CLOUD.roles||{}, roleOf=e=>e===lc(r.admin)?"admin":(r.entry||[]).map(lc).includes(e)?"entry":"viewer";
+  const people=new Map(); [lc(r.admin),...(r.entry||[]).map(lc)].filter(Boolean).forEach(e=>people.set(e,null));
+  SEEN.forEach(s=>people.set(s.id,s));
+  const cnt=e=>receipts.filter(x=>lc(x.by)===e).length+soc.expenses.filter(x=>lc(x.by)===e).length+(soc.cash||[]).filter(x=>lc(x.by)===e).length;
+  const order={admin:0,entry:1,viewer:2};
+  const rows=[...people.entries()].sort((a,b)=>order[roleOf(a[0])]-order[roleOf(b[0])]||String(b[1]?.at||"").localeCompare(String(a[1]?.at||"")));
+  $("seenBody").innerHTML=rows.map(([e,s])=>{ const rl=roleOf(e), on=s&&ago(s.at)==="Online now";
+    return `<tr class="seenrow" data-seen="${esc(e)}"><td><b>${esc(personName(e))}</b><div class="muted" style="font-size:11px">${esc(isLoginEmail(e)?"":e)}</div></td><td>${rl==="admin"?"Admin":rl==="entry"?"Data entry":"Member"}</td>
+      <td class="num">${s?`<span class="pill ${on?"st-ok":""}">${esc(ago(s.at))}</span><div class="muted" style="font-size:11px">${esc(seenWhen(s.at))}</div>`:`<span class="muted">Never opened</span>`}</td>
+      <td style="font-size:12px">${s?esc(s.device||""):""}</td><td class="num" style="text-align:right">${cnt(e)}</td></tr>`+
+      (seenOpen===e&&s&&Array.isArray(s.hist)?`<tr><td colspan="5"><div class="seenhist">${s.hist.map(h=>`<div><span class="num">${esc(seenWhen(h.at))}</span> · ${esc(h.device||"")}</div>`).join("")}</div></td></tr>`:"");
+  }).join("")||`<tr><td colspan="5" class="empty">Nobody yet.</td></tr>`;
+}
+$("seenBody").addEventListener("click",e=>{ const r=e.target.closest("[data-seen]"); if(!r) return; seenOpen=seenOpen===r.dataset.seen?null:r.dataset.seen; renderSeen(); });
+const _seenSetRole=setRole;
+let seenStarted="";
+setRole=function(r){ _seenSetRole(r); if(CLOUD.on&&seenStarted!==CLOUD.email+"|"+r){ seenStarted=CLOUD.email+"|"+r; seenPing(true); clearInterval(seenTimer); seenTimer=setInterval(()=>{ if(document.visibilityState==="visible") seenPing(false); },4*60000); seenWatch(); } renderSeen(); };
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible"&&CLOUD.on&&CLOUD.email) seenPing(true); });
+setInterval(()=>{ if(ROLE==="admin"&&CLOUD.on&&!$("seenPanel").hidden) renderSeen(); },60000);
 /* ---------- local storage + backup ---------- */
 const KEY="stuti-avenue-receipts-v1", META="stuti-avenue-receipts-meta";
 const SEED={"config": {"address": "RESIDANCY SERVAY NO 367, PLOT NO. 327, OPP SOMCHINTAMANI APPT, TP 14, SURAT 395009", "cycle": "apr", "dueDays": 15, "extras": {"entry": 0, "flattx": 0, "nonocc": 0, "other": 0, "parking": 0, "repair": 0, "sharetx": 0, "sinking": 0}, "fmt": "plain", "name": "STUTI AVENUE CO. OP. HOUSING SOCIETY LTD D BLDG", "penaltyRate": 10, "prefix": "SA", "reg": "SRT/S 7124/ DT. 22/11/2012", "rentRate": 1700, "secretary": "", "selfRate": 1400, "startSeq": 1, "treasurer": ""}, "members": [{"id": "f02", "flatNo": "D-102", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f03", "flatNo": "D-103", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f04", "flatNo": "D-104", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f05", "flatNo": "D-201", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f06", "flatNo": "D-202", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f07", "flatNo": "D-203", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f08", "flatNo": "D-204", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f09", "flatNo": "D-301", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f10", "flatNo": "D-302", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f11", "flatNo": "D-303", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f12", "flatNo": "D-304", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f13", "flatNo": "D-401", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f14", "flatNo": "D-402", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f15", "flatNo": "D-403", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f17", "flatNo": "D-501", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f18", "flatNo": "D-502", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f19", "flatNo": "D-503", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f20", "flatNo": "D-504", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrpbvq1", "flatNo": "D-101", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrqe8qi", "flatNo": "D-404", "name": "", "mobile": "", "email": "", "occ": "self"}], "receipts": []};
