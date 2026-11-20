@@ -95,6 +95,11 @@ td.flat input{width:80px;font-family:var(--mono)}
 .stats b{color:var(--ink);font-family:var(--mono)}
 .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
 .empty{padding:28px;text-align:center;color:var(--muted)}
+.bmpresets{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.bmchip{border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:999px;padding:7px 12px;font:inherit;font-size:13px;cursor:pointer}
+.bmchip.on{background:var(--carbon);border-color:var(--carbon);color:#fff}
+#bmNeftBox{margin-top:10px}
+#bmNeftBox[hidden],label.adjchk[hidden],#adjBox label.adjchk[hidden]{display:none!important}
 .bkocr{margin-top:6px;color:var(--muted)}
 .bkbad{margin-top:6px;padding:8px 10px;border-radius:8px;background:color-mix(in srgb,var(--bad-soft) 70%,transparent);color:var(--danger)}
 .bkgood{margin-top:6px;color:var(--stamp);font-weight:600}
@@ -530,7 +535,13 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
         </div>
         <div class="msg" id="bkMsg" role="status"></div>
 
-        <details class="more" style="margin-top:14px"><summary>Add one transaction by hand</summary>
+        <details class="more" style="margin-top:14px" open><summary>Add transaction by hand</summary>
+          <div class="bmpresets" role="group" aria-label="Regular entries">
+            <button class="bmchip" type="button" data-bmp="common">Paid to common society A/c</button>
+            <button class="bmchip" type="button" data-bmp="dgvcl">DGVCL electricity bill</button>
+            <button class="bmchip" type="button" data-bmp="neft">NEFT charge Rs 5.61</button>
+            <button class="bmchip" type="button" data-bmp="int">Bank interest</button>
+          </div>
           <div class="fields" style="margin-top:10px">
             <label>Date<input type="date" id="bmDate"></label>
             <label>Type<select id="bmType"><option value="cr">Money in (credit)</option><option value="dr">Money out (debit)</option></select></label>
@@ -538,6 +549,7 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
             <label>Ref / UTR / cheque no.<input id="bmRef"></label>
             <label class="full">Narration<input id="bmNarr" placeholder="As shown in the bank statement"></label>
           </div>
+          <label class="adjchk" id="bmNeftBox" hidden><input type="checkbox" id="bmNeft" checked> Also add the NEFT charge of Rs 5.61 for this bill</label>
           <div class="actions"><button class="btn small" type="button" id="bmSave">Add transaction</button></div>
         </details>
 
@@ -2973,7 +2985,10 @@ $("bmSave").addEventListener("click",()=>{
   if(!date||amt<=0){ setMsg(msg,"err","Enter the date and amount."); return; }
   const t={date,narr:$("bmNarr").value.trim(),ref:$("bmRef").value.trim(),cr:$("bmType").value==="cr"?amt:0,dr:$("bmType").value==="dr"?amt:0,bal:null,src:"manual",addedAt:new Date().toISOString(),by:CLOUD.on?CLOUD.email:""};
   t.id=bankId(t)+"m"; if(bankRows().some(b=>b.id===t.id)){ setMsg(msg,"err","This transaction is already in the bank book."); return; }
-  autoMatch([t]); bankRows().push(t); persist(); ["bmAmt","bmRef","bmNarr"].forEach(i=>$(i).value=""); renderBank(); setMsg(msg,"ok","Transaction added.");
+  const add=[t];
+  if(bmPreset==="dgvcl"&&$("bmNeft").checked){ const c={date,narr:"NEFT charges – DGVCL electricity bill"+(t.ref?" "+t.ref:""),ref:t.ref,cr:0,dr:BM_NEFT,bal:null,src:"manual",addedAt:t.addedAt,by:t.by}; c.id=bankId(c)+"m"; if(!bankRows().some(b=>b.id===c.id)) add.push(c); }
+  autoMatch(add); bankRows().push(...add); persist(); ["bmAmt","bmRef","bmNarr"].forEach(i=>$(i).value=""); bmSetPreset("");
+  renderBank(); setMsg(msg,"ok",add.length>1?`Electricity bill Rs. ${inr(t.dr)} and NEFT charge Rs. ${inr(BM_NEFT)} added.`:"Transaction added.");
 });
 $("bsSave").addEventListener("click",()=>{
   if(ROLE!=="admin"){ setMsg($("bkMsg"),"err","Only the admin can change bank details."); return; }
@@ -3813,6 +3828,24 @@ function stmtRows(pages,ocr){
   bkLastOcr=ocr;
   return rows;
 }
+
+/* ---------- regular bank entries (one tap) ---------- */
+const BM_NEFT=5.61;
+const BM_PRESETS={
+  common:{type:"dr",narr:"Paid to common society account A/c 246012010000293",amt:""},
+  dgvcl:{type:"dr",narr:"DGVCL electricity bill – Customer no. 41116126117",amt:""},
+  neft:{type:"dr",narr:"NEFT charges",amt:BM_NEFT},
+  int:{type:"cr",narr:"Interest credited by bank",amt:""},
+};
+let bmPreset="";
+function bmSetPreset(k){
+  bmPreset=k; document.querySelectorAll("[data-bmp]").forEach(b=>b.classList.toggle("on",b.dataset.bmp===k));
+  $("bmNeftBox").hidden=k!=="dgvcl";
+  const p=BM_PRESETS[k]; if(!p) return;
+  $("bmType").value=p.type; $("bmNarr").value=p.narr; $("bmAmt").value=p.amt; if(!$("bmDate").value) $("bmDate").value=todayISO();
+  (p.amt===""?$("bmAmt"):$("bmRef")).focus();
+}
+document.addEventListener("click",e=>{ const k=e.target.dataset&&e.target.dataset.bmp; if(k) bmSetPreset(bmPreset===k?"":k); });
 /* ---------- local storage + backup ---------- */
 const KEY="stuti-avenue-receipts-v1", META="stuti-avenue-receipts-meta";
 const SEED={"config": {"address": "RESIDANCY SERVAY NO 367, PLOT NO. 327, OPP SOMCHINTAMANI APPT, TP 14, SURAT 395009", "cycle": "apr", "dueDays": 15, "extras": {"entry": 0, "flattx": 0, "nonocc": 0, "other": 0, "parking": 0, "repair": 0, "sharetx": 0, "sinking": 0}, "fmt": "plain", "name": "STUTI AVENUE CO. OP. HOUSING SOCIETY LTD D BLDG", "penaltyRate": 10, "prefix": "SA", "reg": "SRT/S 7124/ DT. 22/11/2012", "rentRate": 1700, "secretary": "", "selfRate": 1400, "startSeq": 1, "treasurer": ""}, "members": [{"id": "f02", "flatNo": "D-102", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f03", "flatNo": "D-103", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f04", "flatNo": "D-104", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f05", "flatNo": "D-201", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f06", "flatNo": "D-202", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f07", "flatNo": "D-203", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f08", "flatNo": "D-204", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f09", "flatNo": "D-301", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f10", "flatNo": "D-302", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f11", "flatNo": "D-303", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f12", "flatNo": "D-304", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f13", "flatNo": "D-401", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f14", "flatNo": "D-402", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f15", "flatNo": "D-403", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f17", "flatNo": "D-501", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f18", "flatNo": "D-502", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f19", "flatNo": "D-503", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f20", "flatNo": "D-504", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrpbvq1", "flatNo": "D-101", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrqe8qi", "flatNo": "D-404", "name": "", "mobile": "", "email": "", "occ": "self"}], "receipts": []};
