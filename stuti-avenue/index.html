@@ -517,8 +517,8 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
     <div class="grid bkgrid" style="margin-top:16px">
       <div class="panel bkadd">
         <h2>Import bank statement</h2>
-        <p class="hint" style="margin:-6px 0 10px">Download the statement from net banking as <b>Excel (.xls / .xlsx)</b> or <b>CSV</b> and choose it here. Rows already imported are skipped, so you can upload overlapping months safely.</p>
-        <label>Statement file<input type="file" id="bkFile" accept=".csv,.xls,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></label>
+        <p class="hint" style="margin:-6px 0 10px">Choose the statement the bank gave you: <b>PDF</b> (from net banking or the bank's email), <b>Excel</b> or <b>CSV</b>. If the PDF is locked, the app asks for its password. Rows already imported are skipped, so you can upload overlapping months safely.</p>
+        <label>Statement file<input type="file" id="bkFile" accept=".pdf,.csv,.xls,.xlsx,application/pdf,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></label>
         <div id="bkMap" hidden>
           <p class="hint" id="bkMapHint"></p>
           <div class="fields" id="bkMapFields"></div>
@@ -2930,13 +2930,13 @@ function bkRenderMap(){
 }
 $("bkFile").addEventListener("change",async()=>{
   const f=$("bkFile").files[0]; $("bkFile").value=""; if(!f) return; const msg=$("bkMsg");
-  if(/\.pdf$/i.test(f.name)){ setMsg(msg,"err","PDF statements can't be read here. In net banking choose Download → Excel or CSV, then upload that file."); return; }
-  setMsg(msg,"","Reading the statement…");
+  const isPdf=/\.pdf$/i.test(f.name)||f.type==="application/pdf";
+  setMsg(msg,"",isPdf?"Reading the PDF statement… (needs internet the first time)":"Reading the statement…");
   try{
-    const rows=(await readStatement(f)).filter(r=>r.some(c=>String(c).trim()!==""));
+    const rows=(isPdf?await readPdfStatement(f):await readStatement(f)).filter(r=>r.some(c=>String(c).trim()!==""));
     const hdr=guessHeader(rows); if(hdr<0){ setMsg(msg,"err","Couldn't find the column headings (Date, Withdrawal, Deposit, Balance…). Is this the bank's transaction statement?"); return; }
     bkImport={rows,hdr,map:guessMap(rows[hdr]),file:f.name}; setMsg(msg,"",""); bkRenderMap();
-  }catch(err){ setMsg(msg,"err","Could not read the file: "+(err.message||err)+(window.XLSX?"":" (Excel reader needs internet the first time)")); }
+  }catch(err){ setMsg(msg,"err",(isPdf?"Could not read the PDF: ":"Could not read the file: ")+(err.message||err)+(isPdf||window.XLSX?"":" (Excel reader needs internet the first time)")); }
 });
 $("bkMapFields").addEventListener("change",e=>{ const k=e.target.dataset.bkmap; if(!k) return; bkImport.map[k]=Number(e.target.value); bkRenderMap(); });
 $("bkImportCancel").addEventListener("click",()=>{ bkImport=null; $("bkMap").hidden=true; });
@@ -3684,6 +3684,62 @@ let seenStarted="";
 setRole=function(r){ _seenSetRole(r); if(CLOUD.on&&seenStarted!==CLOUD.email+"|"+r){ seenStarted=CLOUD.email+"|"+r; seenPing(true); clearInterval(seenTimer); seenTimer=setInterval(()=>{ if(document.visibilityState==="visible") seenPing(false); },4*60000); seenWatch(); } renderSeen(); };
 document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible"&&CLOUD.on&&CLOUD.email) seenPing(true); });
 setInterval(()=>{ if(ROLE==="admin"&&CLOUD.on&&!$("seenPanel").hidden) renderSeen(); },60000);
+
+/* ---------- PDF bank statement → rows of columns ---------- */
+const PDFJS_URL="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs", PDFJS_WORKER="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs";
+let pdfjsLibP=null;
+function pdfLib(){ if(!pdfjsLibP) pdfjsLibP=import(PDFJS_URL).then(m=>{ m.GlobalWorkerOptions.workerSrc=PDFJS_WORKER; return m; }).catch(e=>{ pdfjsLibP=null; throw new Error("The PDF reader could not load. Check the internet connection and try again."); }); return pdfjsLibP; }
+async function readPdfStatement(file){
+  const lib=await pdfLib(), data=new Uint8Array(await file.arrayBuffer());
+  let pdf=null, pw;
+  for(let tries=0;;tries++){
+    try{ pdf=await lib.getDocument({data:data.slice(),password:pw,isEvalSupported:false}).promise; break; }
+    catch(err){
+      if(err&&err.name==="PasswordException"&&tries<4){
+        pw=prompt(tries?"Wrong password. Enter the statement PDF password again:":"This bank statement PDF is locked.\nEnter its password (the bank's email says what it is – often part of the name, date of birth or customer ID):");
+        if(pw===null) throw new Error("The PDF is locked and no password was entered.");
+        continue; }
+      throw err; }
+  }
+  // 1. every piece of text with its position, grouped into lines
+  const lines=[];
+  for(let p=1;p<=pdf.numPages;p++){
+    const tc=await (await pdf.getPage(p)).getTextContent();
+    const its=tc.items.filter(i=>i.str&&i.str.trim()).map(i=>({s:i.str.replace(/\s+/g," ").trim(),x:i.transform[4],y:i.transform[5],w:i.width||0}));
+    its.sort((a,b)=>b.y-a.y||a.x-b.x);
+    let cur=null; for(const it of its){ if(!cur||Math.abs(cur.y-it.y)>3){ cur={y:it.y,page:p,items:[]}; lines.push(cur); } cur.items.push(it); }
+  }
+  if(!lines.length) throw new Error("This PDF has no text in it – it is probably a scanned photo. Download the statement again from net banking (PDF, Excel or CSV).");
+  lines.forEach(l=>{ l.items.sort((a,b)=>a.x-b.x); l.text=l.items.map(i=>i.s).join(" ").toLowerCase(); });
+  // 2. the heading line (Date … Debit/Withdrawal … Credit/Deposit … Balance)
+  const isHead=l=>/date/.test(l.text)&&/(withdraw|debit|deposit|credit|balance|amount)/.test(l.text)&&l.items.length>=3;
+  const hi=lines.findIndex(isHead); if(hi<0) throw new Error("Couldn't find the column headings (Date, Debit, Credit, Balance) in this PDF.");
+  const cells=[]; for(const it of lines[hi].items){ const last=cells[cells.length-1]; if(last&&it.x-(last.x+last.w)<4){ last.s+=" "+it.s; last.w=it.x+it.w-last.x; } else cells.push({...it}); }
+  // headings split over two lines (e.g. "Withdrawal" / "Amount (INR)"): add the next line's words to the heading above them
+  const nx=lines[hi+1]; if(nx&&nx.page===lines[hi].page&&!nx.items.some(i=>bkDate(i.s))&&!nx.items.some(i=>/\d/.test(i.s)&&bkNum(i.s))){
+    for(const it of nx.items){ const c=cells.reduce((b,c)=>Math.abs(c.x+c.w/2-(it.x+it.w/2))<Math.abs(b.x+b.w/2-(it.x+it.w/2))?c:b); c.s+=" "+it.s; } nx.skip=true; }
+  const head=cells.map(c=>c.s), ctr=cells.map(c=>c.x+c.w/2), headKey=lines[hi].text;
+  const dateCol=Math.max(0,head.findIndex(h=>/date/i.test(h)));
+  const colOf=it=>{ const c=it.x+it.w/2; for(let k=0;k<cells.length;k++){ if(c>=cells[k].x-6&&c<=cells[k].x+cells[k].w+6) return k; } let b=0; ctr.forEach((v,k)=>{ if(Math.abs(v-c)<Math.abs(ctr[b]-c)) b=k; }); return b; };
+  const numLike=s=>/^[-(]?\s*(rs\.?|₹)?\s*[\d,]+(\.\d+)?\s*\)?\s*(cr|dr)?\.?$/i.test(String(s).trim());
+  // 3. rows: a line that starts with a date is a new transaction; other lines add more words to the one above
+  const rows=[head]; let prev=null, started=false;
+  for(let i=hi+1;i<lines.length;i++){
+    const l=lines[i]; if(l.skip) continue;
+    if(l.text===headKey||isHead(l)){ prev=null; continue; }
+    const r=Array(cells.length).fill("");
+    for(const it of l.items){ const k=colOf(it); r[k]=r[k]?r[k]+" "+it.s:it.s; }
+    if(bkDate(r[dateCol])){ rows.push(r); prev=r; started=true; continue; }
+    // a date written with spaces may be split across two columns ("01 Apr" + "2026"): try joining the line's first words
+    const lead=l.items.slice(0,3).map(i=>i.s).join(" ");
+    if(!bkDate(r[dateCol]) && /^\d{1,2}[ -][A-Za-z]{3}/.test(lead)){ const m=lead.match(/^\d{1,2}[ -][A-Za-z]{3}[a-z]*[ -,]*\d{2,4}/); if(m&&bkDate(m[0])){ r[dateCol]=m[0]; rows.push(r); prev=r; started=true; continue; } }
+    if(!started||!prev) continue;
+    if(/(opening|closing)\s+balance|total|statement summary|page \d+/i.test(l.text)){ prev=null; continue; }
+    r.forEach((v,k)=>{ if(v&&!numLike(v)&&!numLike(prev[k]||"")) prev[k]=prev[k]?prev[k]+" "+v:v; });
+  }
+  if(rows.length<2) throw new Error("Found the headings but no transactions in this PDF.");
+  return rows;
+}
 /* ---------- local storage + backup ---------- */
 const KEY="stuti-avenue-receipts-v1", META="stuti-avenue-receipts-meta";
 const SEED={"config": {"address": "RESIDANCY SERVAY NO 367, PLOT NO. 327, OPP SOMCHINTAMANI APPT, TP 14, SURAT 395009", "cycle": "apr", "dueDays": 15, "extras": {"entry": 0, "flattx": 0, "nonocc": 0, "other": 0, "parking": 0, "repair": 0, "sharetx": 0, "sinking": 0}, "fmt": "plain", "name": "STUTI AVENUE CO. OP. HOUSING SOCIETY LTD D BLDG", "penaltyRate": 10, "prefix": "SA", "reg": "SRT/S 7124/ DT. 22/11/2012", "rentRate": 1700, "secretary": "", "selfRate": 1400, "startSeq": 1, "treasurer": ""}, "members": [{"id": "f02", "flatNo": "D-102", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f03", "flatNo": "D-103", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f04", "flatNo": "D-104", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f05", "flatNo": "D-201", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f06", "flatNo": "D-202", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f07", "flatNo": "D-203", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f08", "flatNo": "D-204", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f09", "flatNo": "D-301", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f10", "flatNo": "D-302", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f11", "flatNo": "D-303", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f12", "flatNo": "D-304", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f13", "flatNo": "D-401", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f14", "flatNo": "D-402", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f15", "flatNo": "D-403", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f17", "flatNo": "D-501", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f18", "flatNo": "D-502", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f19", "flatNo": "D-503", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f20", "flatNo": "D-504", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrpbvq1", "flatNo": "D-101", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrqe8qi", "flatNo": "D-404", "name": "", "mobile": "", "email": "", "occ": "self"}], "receipts": []};
