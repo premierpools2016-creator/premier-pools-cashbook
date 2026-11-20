@@ -150,7 +150,7 @@ label.adjchk,#adjBox label.adjchk{display:flex!important;flex-direction:row!impo
 .bkrow.unmatched{border-left:4px solid var(--warn)}
 .bkgrid{grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr)}
 @media (max-width:900px){.bkgrid{grid-template-columns:minmax(0,1fr)}}
-.role-entry .bkdel,.role-entry .bkset,.role-viewer .bkdel,.role-viewer .bkadd,.role-viewer #bkList,.role-viewer #bkRecoBox,.role-viewer #tab-bank .filters,.role-viewer #tab-bank .bkgrid h2{display:none!important}
+.role-entry .bkedit,.role-viewer .bkedit,.role-entry .bkdel,.role-entry .bkset,.role-viewer .bkdel,.role-viewer .bkadd,.role-viewer #bkList,.role-viewer #bkRecoBox,.role-viewer #tab-bank .filters,.role-viewer #tab-bank .bkgrid h2{display:none!important}
 .role-viewer .bkgrid{grid-template-columns:minmax(0,1fr)}
 .idlogin{display:grid;gap:8px;margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)}
 .pingate{z-index:70}
@@ -3075,6 +3075,7 @@ function renderBank(){
           <button class="btn small bkact" type="button" data-bkmake="${t.id}">${isIn?"Make receipt":"Make expense"}</button>
           <button class="btn ghost small bkact" type="button" data-bklink="${t.id}">Link</button>
           <button class="btn ghost small bkact" type="button" data-bkother="${t.id}">Other</button>`}
+        <button class="btn ghost small bkedit" type="button" data-bkedit="${t.id}">Edit</button>
         <button class="btn danger small bkdel" type="button" data-bkdel="${t.id}">Delete</button></div>
       <div class="repay" id="bkp-${t.id}" hidden></div>
     </div>`; }).join("")+(list.length>300?`<div class="hint">Showing 300 of ${list.length}. Use the filters to narrow.</div>`:"")
@@ -3965,6 +3966,36 @@ $("bxXls").addEventListener("click",()=>bxGo("xls"));
 $("bxShare").addEventListener("click",()=>bxGo("share"));
 const _bxRenderBank=renderBank;
 renderBank=function(){ _bxRenderBank(); if(!$("bxFrom").value&&!$("bxTo").value){ const [a,c]=fyRange(todayISO()); $("bxFrom").value=a; $("bxTo").value=c; } };
+
+/* ---------- edit a bank entry ---------- */
+function bkEditForm(t){
+  const isIn=t.cr>0;
+  return `<div class="fields">
+    <label>Date<input type="date" data-be="date" value="${esc(t.date)}"></label>
+    <label>Type<select data-be="type"><option value="cr"${isIn?" selected":""}>Money in (credit)</option><option value="dr"${isIn?"":" selected"}>Money out (debit)</option></select></label>
+    <label>Amount (Rs.)<input type="number" min="0" step="0.01" class="num" data-be="amt" value="${isIn?t.cr:t.dr}"></label>
+    <label>Ref / UTR / cheque no.<input data-be="ref" value="${esc(t.ref||"")}"></label>
+    <label class="full">Narration<input data-be="narr" value="${esc(t.narr||"")}"></label>
+    ${t.bal!=null?`<label>Balance in statement (Rs.)<input type="number" step="0.01" class="num" data-be="bal" value="${t.bal}"></label>`:""}
+  </div>
+  <div class="links" style="margin-top:8px"><button class="btn small" type="button" data-besave="${t.id}">Save changes</button><button class="btn ghost small" type="button" data-becancel="${t.id}">Cancel</button></div>`;
+}
+document.addEventListener("click",e=>{
+  const ds=e.target.dataset||{}; const id=ds.bkedit||ds.besave||ds.becancel; if(!id) return;
+  const t=bankRows().find(x=>x.id===id), box=$("bkp-"+id); if(!t||!box) return;
+  if(ds.becancel){ box.hidden=true; box.innerHTML=""; return; }
+  if(ROLE!=="admin"){ setMsg($("bkMsg"),"err","Only the admin can edit a bank entry."); return; }
+  if(ds.bkedit){ const open=!box.hidden&&box.dataset.mode==="edit"; box.dataset.mode="edit"; box.hidden=open; box.innerHTML=open?"":bkEditForm(t); if(!open) box.querySelector("[data-be=amt]").focus(); return; }
+  const q=k=>box.querySelector(`[data-be=${k}]`), amt=Math.round((Number(q("amt").value)||0)*100)/100, date=q("date").value;
+  if(!date||amt<=0){ setMsg($("bkMsg"),"err","Enter the date and an amount above zero."); return; }
+  const before=t.cr>0?"cr":"dr", was=before==="cr"?t.cr:t.dr, type=q("type").value;
+  t.date=date; t.cr=type==="cr"?amt:0; t.dr=type==="dr"?amt:0; t.ref=q("ref").value.trim(); t.narr=q("narr").value.trim();
+  if(q("bal")) t.bal=q("bal").value===""?null:Math.round(Number(q("bal").value)*100)/100;
+  t.editedAt=new Date().toISOString(); t.editedBy=CLOUD.on?CLOUD.email:"";
+  let note="";
+  if(t.match&&t.match.type!=="other"&&(type!==before||amt!==was)){ delete t.match; autoMatch([t]); note=t.match?" The link was checked again: "+matchText(t)+".":" The amount changed, so its link was removed. Link it again if needed."; }
+  persist(); renderBank(); setMsg($("bkMsg"),"ok",`Bank entry of ${fmtDate(date)} updated.${note}`);
+});
 /* ---------- local storage + backup ---------- */
 const KEY="stuti-avenue-receipts-v1", META="stuti-avenue-receipts-meta";
 const SEED={"config": {"address": "RESIDANCY SERVAY NO 367, PLOT NO. 327, OPP SOMCHINTAMANI APPT, TP 14, SURAT 395009", "cycle": "apr", "dueDays": 15, "extras": {"entry": 0, "flattx": 0, "nonocc": 0, "other": 0, "parking": 0, "repair": 0, "sharetx": 0, "sinking": 0}, "fmt": "plain", "name": "STUTI AVENUE CO. OP. HOUSING SOCIETY LTD D BLDG", "penaltyRate": 10, "prefix": "SA", "reg": "SRT/S 7124/ DT. 22/11/2012", "rentRate": 1700, "secretary": "", "selfRate": 1400, "startSeq": 1, "treasurer": ""}, "members": [{"id": "f02", "flatNo": "D-102", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f03", "flatNo": "D-103", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f04", "flatNo": "D-104", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f05", "flatNo": "D-201", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f06", "flatNo": "D-202", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f07", "flatNo": "D-203", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f08", "flatNo": "D-204", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f09", "flatNo": "D-301", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f10", "flatNo": "D-302", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f11", "flatNo": "D-303", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f12", "flatNo": "D-304", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f13", "flatNo": "D-401", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f14", "flatNo": "D-402", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f15", "flatNo": "D-403", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f17", "flatNo": "D-501", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f18", "flatNo": "D-502", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f19", "flatNo": "D-503", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f20", "flatNo": "D-504", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrpbvq1", "flatNo": "D-101", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrqe8qi", "flatNo": "D-404", "name": "", "mobile": "", "email": "", "occ": "self"}], "receipts": []};
