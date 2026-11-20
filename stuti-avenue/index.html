@@ -95,6 +95,8 @@ td.flat input{width:80px;font-family:var(--mono)}
 .stats b{color:var(--ink);font-family:var(--mono)}
 .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
 .empty{padding:28px;text-align:center;color:var(--muted)}
+.bmdate{display:grid;gap:6px}
+.bmsteps{display:flex;flex-wrap:wrap;gap:6px}
 #bmFlatBox[hidden]{display:none!important}
 .bmpresets{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .bmchip{border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:999px;padding:7px 12px;font:inherit;font-size:13px;cursor:pointer}
@@ -551,7 +553,9 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
             <p class="hint full" id="bmMBankHint" style="margin:-4px 0 0"></p>
           </div>
           <div class="fields" style="margin-top:10px">
-            <label>Date<input type="date" id="bmDate"></label>
+            <div class="bmdate"><label>Date<input type="date" id="bmDate"></label>
+              <div class="bmsteps" role="group" aria-label="Change date"><button class="bmchip" type="button" data-bmd="-1">− 1 day</button><button class="bmchip" type="button" data-bmd="1">+ 1 day</button><button class="bmchip" type="button" data-bmd="2">+ 2 days</button></div>
+              <p class="hint" id="bmLastHint" style="margin:0"></p></div>
             <label>Type<select id="bmType"><option value="cr">Money in (credit)</option><option value="dr">Money out (debit)</option></select></label>
             <label>Amount (Rs.)<input type="number" min="0" id="bmAmt" class="num"></label>
             <label>Ref / UTR / cheque no.<input id="bmRef"></label>
@@ -3865,13 +3869,22 @@ function bmSetPreset(k){
   bmPreset=k; document.querySelectorAll("[data-bmp]").forEach(b=>b.classList.toggle("on",b.dataset.bmp===k));
   $("bmNeftBox").hidden=k!=="dgvcl"; $("bmFlatBox").hidden=k!=="maint";
   const p=BM_PRESETS[k]; if(!p) return;
-  if(p.type) $("bmType").value=p.type; $("bmNarr").value=p.narr; $("bmAmt").value=p.amt; if(!$("bmDate").value) $("bmDate").value=todayISO();
+  if(p.type) $("bmType").value=p.type; $("bmNarr").value=p.narr; $("bmAmt").value=p.amt; if(!$("bmDate").value) $("bmDate").value=bmLast()||todayISO();
   if(k==="maint"){ const cur=$("bmFlat").value; $("bmFlat").innerHTML=`<option value="">Choose flat…</option>`+[...members].sort(flatSort).map(m=>`<option value="${esc(m.id)}">${esc(memberLabel(m))}</option>`).join(""); $("bmFlat").value=cur; bmMaintNarr(); $("bmFlat").focus(); return; }
   if(k==="other"){ $("bmNarr").focus(); return; }
   (p.amt===""?$("bmAmt"):$("bmRef")).focus();
 }
 $("bmFlat").addEventListener("change",bmMaintNarr);
 document.addEventListener("click",e=>{ const k=e.target.dataset&&e.target.dataset.bmp; if(k) bmSetPreset(bmPreset===k?"":k); });
+
+/* ---------- manual bank entry: remember the last date ---------- */
+const BM_LAST="stuti-bm-lastdate";
+function bmLast(){ try{ return localStorage.getItem(BM_LAST)||""; }catch(_){ return ""; } }
+function bmShowLast(){ const l=bmLast(); $("bmLastHint").textContent=l?`Last entry was on ${fmtDate(l)}. The date stays until you change it.`:""; }
+(function(){ const l=bmLast(); if(l&&!$("bmDate").value) $("bmDate").value=l; bmShowLast(); })();
+document.addEventListener("click",e=>{ const d=e.target.dataset&&e.target.dataset.bmd; if(d===undefined) return;
+  const base=$("bmDate").value||bmLast()||todayISO(), t=new Date(base+"T12:00:00"); t.setDate(t.getDate()+Number(d)); $("bmDate").value=isoOf(t); $("bmAmt").focus(); });
+$("bmSave").addEventListener("click",()=>{ setTimeout(()=>{ if(/added/i.test($("bkMsg").textContent)&&$("bmDate").value){ try{ localStorage.setItem(BM_LAST,$("bmDate").value); }catch(_){} bmShowLast(); } },0); });
 /* ---------- local storage + backup ---------- */
 const KEY="stuti-avenue-receipts-v1", META="stuti-avenue-receipts-meta";
 const SEED={"config": {"address": "RESIDANCY SERVAY NO 367, PLOT NO. 327, OPP SOMCHINTAMANI APPT, TP 14, SURAT 395009", "cycle": "apr", "dueDays": 15, "extras": {"entry": 0, "flattx": 0, "nonocc": 0, "other": 0, "parking": 0, "repair": 0, "sharetx": 0, "sinking": 0}, "fmt": "plain", "name": "STUTI AVENUE CO. OP. HOUSING SOCIETY LTD D BLDG", "penaltyRate": 10, "prefix": "SA", "reg": "SRT/S 7124/ DT. 22/11/2012", "rentRate": 1700, "secretary": "", "selfRate": 1400, "startSeq": 1, "treasurer": ""}, "members": [{"id": "f02", "flatNo": "D-102", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f03", "flatNo": "D-103", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f04", "flatNo": "D-104", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f05", "flatNo": "D-201", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f06", "flatNo": "D-202", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f07", "flatNo": "D-203", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f08", "flatNo": "D-204", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f09", "flatNo": "D-301", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f10", "flatNo": "D-302", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f11", "flatNo": "D-303", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f12", "flatNo": "D-304", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f13", "flatNo": "D-401", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f14", "flatNo": "D-402", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f15", "flatNo": "D-403", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f17", "flatNo": "D-501", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f18", "flatNo": "D-502", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f19", "flatNo": "D-503", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f20", "flatNo": "D-504", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrpbvq1", "flatNo": "D-101", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrqe8qi", "flatNo": "D-404", "name": "", "mobile": "", "email": "", "occ": "self"}], "receipts": []};
