@@ -95,6 +95,9 @@ td.flat input{width:80px;font-family:var(--mono)}
 .stats b{color:var(--ink);font-family:var(--mono)}
 .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
 .empty{padding:28px;text-align:center;color:var(--muted)}
+.bkocr{margin-top:6px;color:var(--muted)}
+.bkbad{margin-top:6px;padding:8px 10px;border-radius:8px;background:color-mix(in srgb,var(--bad-soft) 70%,transparent);color:var(--danger)}
+.bkgood{margin-top:6px;color:var(--stamp);font-weight:600}
 .seenrow{cursor:pointer}
 .seenhist{display:grid;gap:3px;font-size:12px;color:var(--muted);padding:4px 0 4px 8px;border-left:3px solid var(--line)}
 .bkdue{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;background:var(--carbon-soft);color:var(--ink);border:1px solid var(--line)}
@@ -517,8 +520,8 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
     <div class="grid bkgrid" style="margin-top:16px">
       <div class="panel bkadd">
         <h2>Import bank statement</h2>
-        <p class="hint" style="margin:-6px 0 10px">Choose the statement the bank gave you: <b>PDF</b> (from net banking or the bank's email), <b>Excel</b> or <b>CSV</b>. If the PDF is locked, the app asks for its password. Rows already imported are skipped, so you can upload overlapping months safely.</p>
-        <label>Statement file<input type="file" id="bkFile" accept=".pdf,.csv,.xls,.xlsx,application/pdf,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></label>
+        <p class="hint" style="margin:-6px 0 10px">Choose the statement: <b>PDF</b> (from net banking, the bank's email, or a <b>scanned copy</b>), a <b>photo</b> of the statement, <b>Excel</b> or <b>CSV</b>. If the PDF is locked, the app asks for its password. Scanned copies take about 10–20 seconds a page. Rows already imported are skipped, so you can upload overlapping months safely.</p>
+        <label>Statement file<input type="file" id="bkFile" accept=".pdf,.csv,.xls,.xlsx,.jpg,.jpeg,.png,image/*,application/pdf,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></label>
         <div id="bkMap" hidden>
           <p class="hint" id="bkMapHint"></p>
           <div class="fields" id="bkMapFields"></div>
@@ -2916,6 +2919,18 @@ function bkParseRows(){
     const t={date,narr:String(r[map.narr]??"").replace(/\s+/g," ").trim(),ref:String(r[map.ref]??"").trim(),cr:Math.round(cr*100)/100,dr:Math.round(dr*100)/100,bal:map.bal>=0&&r[map.bal]!==""?bkNum(r[map.bal]):null};
     t.id=bankId(t); out.push(t);
   }
+  if(bkImport.ocr){
+    const ok=(a,b)=>Math.abs(a.bal+b.cr-b.dr-b.bal)<0.5;
+    const setAmt=(b,d)=>{ d=Math.round(d*100)/100; if(!d) return false; const was=b.cr||b.dr; if(d>0){ b.cr=d; b.dr=0; } else { b.dr=-d; b.cr=0; } return was!==Math.abs(d)?`amount ${inr(was)} → ${inr(Math.abs(d))}`:""; };
+    for(let i=1;i<out.length;i++){ const a=out[i-1], b=out[i], c=out[i+1], d=out[i+2];
+      if(a.bal==null||b.bal==null||ok(a,b)) continue;
+      const pa=out[i-2], trusted=a.fixed||(pa&&pa.bal!=null&&ok(pa,a)); if(!trusted) continue;
+      if(c&&c.bal!=null&&ok(b,c)){ b.fixed=setAmt(b,b.bal-a.bal); }
+      else if(c&&c.bal!=null&&Math.abs(a.bal+b.cr-b.dr+c.cr-c.dr-c.bal)<0.5){ const was=b.bal; b.bal=Math.round((a.bal+b.cr-b.dr)*100)/100; b.fixed=`balance ${inr(was)} → ${inr(b.bal)}`; }
+      else if(c&&d&&c.bal!=null&&d.bal!=null&&ok(c,d)){ const was=b.bal; b.bal=Math.round((c.bal-c.cr+c.dr)*100)/100; const fa=setAmt(b,b.bal-a.bal); b.fixed=[fa,`balance ${inr(was)} → ${inr(b.bal)}`].filter(Boolean).join(", "); }
+      if(b.fixed) b.id=bankId(b);
+    }
+  }
   return {list:out,bad};
 }
 function bkRenderMap(){
@@ -2926,16 +2941,21 @@ function bkRenderMap(){
   $("bkMapHint").innerHTML=`<b>${esc(file)}</b>: found <b>${list.length}</b> transactions${bad?` (${bad} lines skipped: headings, totals or blank)`:""}. <b>${fresh.length}</b> new, ${list.length-fresh.length} already imported. Check the columns below match your statement.`;
   $("bkPrev").innerHTML=list.slice(0,8).map(t=>`<tr><td class="num">${fmtDate(t.date)}</td><td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.narr)}</td><td>${esc(t.ref)}</td><td class="num" style="text-align:right">${t.cr?inr(t.cr):""}</td><td class="num" style="text-align:right">${t.dr?inr(t.dr):""}</td><td class="num" style="text-align:right">${t.bal!=null?inr(t.bal):""}</td></tr>`).join("")||`<tr><td colspan="6" class="empty">No transactions found with these columns.</td></tr>`;
   $("bkImportGo").textContent=`Import ${fresh.length} new transaction${fresh.length===1?"":"s"}`; $("bkImportGo").disabled=!fresh.length;
+  const balBad=[]; for(let i=1;i<list.length;i++){ const a=list[i-1], b=list[i]; if(a.bal==null||b.bal==null) continue; if(Math.abs(a.bal+b.cr-b.dr-b.bal)>0.5) balBad.push(b); }
+  const withBal=list.filter(t=>t.bal!=null).length;
+  const fixedRows=list.filter(t=>t.fixed);
+  $("bkMapHint").innerHTML+=(bkImport.ocr?`<div class="bkocr">Read from a <b>scanned copy</b>, so some figures may be misread.${fixedRows.length?` Corrected ${fixedRows.length} misread figure${fixedRows.length>1?"s":""} using the Balance column: ${fixedRows.slice(0,6).map(t=>`${fmtDate(t.date)} ${t.fixed}`).join("; ")}.`:""}</div>`:"")+
+    (withBal>1?(balBad.length?`<div class="bkbad">⚠ ${balBad.length} row${balBad.length>1?"s don't":" doesn't"} add up with the Balance column – check ${balBad.length>1?"them":"it"} against the statement: ${balBad.slice(0,6).map(t=>`${fmtDate(t.date)} ${t.cr?"Cr "+inr(t.cr):"Dr "+inr(t.dr)} → bal ${inr(t.bal)}`).join("; ")}${balBad.length>6?"…":""}</div>`:`<div class="bkgood">✓ Every row adds up with the Balance column.</div>`):"");
   $("bkMap").hidden=false;
 }
 $("bkFile").addEventListener("change",async()=>{
   const f=$("bkFile").files[0]; $("bkFile").value=""; if(!f) return; const msg=$("bkMsg");
-  const isPdf=/\.pdf$/i.test(f.name)||f.type==="application/pdf";
+  const isPdf=/\.(pdf|jpe?g|png|webp)$/i.test(f.name)||f.type==="application/pdf"||/^image\//.test(f.type);
   setMsg(msg,"",isPdf?"Reading the PDF statement… (needs internet the first time)":"Reading the statement…");
   try{
     const rows=(isPdf?await readPdfStatement(f):await readStatement(f)).filter(r=>r.some(c=>String(c).trim()!==""));
     const hdr=guessHeader(rows); if(hdr<0){ setMsg(msg,"err","Couldn't find the column headings (Date, Withdrawal, Deposit, Balance…). Is this the bank's transaction statement?"); return; }
-    bkImport={rows,hdr,map:guessMap(rows[hdr]),file:f.name}; setMsg(msg,"",""); bkRenderMap();
+    bkImport={rows,hdr,map:guessMap(rows[hdr]),file:f.name,ocr:isPdf&&bkLastOcr}; setMsg(msg,"",""); bkRenderMap();
   }catch(err){ setMsg(msg,"err",(isPdf?"Could not read the PDF: ":"Could not read the file: ")+(err.message||err)+(isPdf||window.XLSX?"":" (Excel reader needs internet the first time)")); }
 });
 $("bkMapFields").addEventListener("change",e=>{ const k=e.target.dataset.bkmap; if(!k) return; bkImport.map[k]=Number(e.target.value); bkRenderMap(); });
@@ -3689,11 +3709,36 @@ setInterval(()=>{ if(ROLE==="admin"&&CLOUD.on&&!$("seenPanel").hidden) renderSee
 const PDFJS_URL="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs", PDFJS_WORKER="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs";
 let pdfjsLibP=null;
 function pdfLib(){ if(!pdfjsLibP) pdfjsLibP=import(PDFJS_URL).then(m=>{ m.GlobalWorkerOptions.workerSrc=PDFJS_WORKER; return m; }).catch(e=>{ pdfjsLibP=null; throw new Error("The PDF reader could not load. Check the internet connection and try again."); }); return pdfjsLibP; }
+const TESS_URL="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+function bkStatus(t){ const m=$("bkMsg"); if(m){ m.className="msg"; m.textContent=t; } }
+async function ocrWorker(){
+  if(!window.Tesseract) await loadScript(TESS_URL).catch(()=>{ throw new Error("The scanned-copy reader could not load. Check the internet connection and try again."); });
+  const w=await Tesseract.createWorker("eng",1,{});
+  try{ await w.setParameters({tessedit_pageseg_mode:"6",preserve_interword_spaces:"1"}); }catch(_){}
+  return w;
+}
+function ocrItems(data,scale){
+  // use Tesseract's own text lines, so a slightly tilted scan still keeps each row together
+  const keep=w=>w&&w.text&&/[A-Za-z0-9₹]/.test(w.text)&&(w.confidence==null||w.confidence>5);
+  const out=[], mk=(w,y)=>({s:w.text.trim(),x:w.bbox.x0/scale,y:-y/scale,w:(w.bbox.x1-w.bbox.x0)/scale,h:(w.bbox.y1-w.bbox.y0)/scale});
+  if(Array.isArray(data.lines)&&data.lines.length){ data.lines.forEach(l=>{ const y=(l.bbox.y0+l.bbox.y1)/2; (l.words||[]).filter(keep).forEach(w=>out.push(mk(w,y))); }); return out; }
+  return (data.words||[]).filter(keep).map(w=>mk(w,(w.bbox.y0+w.bbox.y1)/2));
+}
+let bkLastOcr=false;
 async function readPdfStatement(file){
-  const lib=await pdfLib(), data=new Uint8Array(await file.arrayBuffer());
+  bkLastOcr=false;
+  const isImg=/^image\//.test(file.type)||/\.(jpe?g|png|webp)$/i.test(file.name);
+  let pages=[]; // [{items:[{s,x,y,w,h}]}]
+  if(isImg){
+    bkStatus("Reading the photo of the statement… this can take a minute.");
+    const w=await ocrWorker(); try{ const img=await createImageBitmap(file); const sc=Math.min(1,2600/Math.max(img.width,img.height)); const cv=document.createElement("canvas"); cv.width=img.width*sc; cv.height=img.height*sc; cv.getContext("2d").drawImage(img,0,0,cv.width,cv.height);
+      const {data}=await w.recognize(cv); pages.push({items:ocrItems(data,1),ocr:true}); } finally{ w.terminate(); }
+    return stmtRows(pages,true);
+  }
+  const lib=await pdfLib(), bytes=new Uint8Array(await file.arrayBuffer());
   let pdf=null, pw;
   for(let tries=0;;tries++){
-    try{ pdf=await lib.getDocument({data:data.slice(),password:pw,isEvalSupported:false}).promise; break; }
+    try{ pdf=await lib.getDocument({data:bytes.slice(),password:pw,isEvalSupported:false}).promise; break; }
     catch(err){
       if(err&&err.name==="PasswordException"&&tries<4){
         pw=prompt(tries?"Wrong password. Enter the statement PDF password again:":"This bank statement PDF is locked.\nEnter its password (the bank's email says what it is – often part of the name, date of birth or customer ID):");
@@ -3701,43 +3746,71 @@ async function readPdfStatement(file){
         continue; }
       throw err; }
   }
-  // 1. every piece of text with its position, grouped into lines
-  const lines=[];
   for(let p=1;p<=pdf.numPages;p++){
     const tc=await (await pdf.getPage(p)).getTextContent();
-    const its=tc.items.filter(i=>i.str&&i.str.trim()).map(i=>({s:i.str.replace(/\s+/g," ").trim(),x:i.transform[4],y:i.transform[5],w:i.width||0}));
-    its.sort((a,b)=>b.y-a.y||a.x-b.x);
-    let cur=null; for(const it of its){ if(!cur||Math.abs(cur.y-it.y)>3){ cur={y:it.y,page:p,items:[]}; lines.push(cur); } cur.items.push(it); }
+    pages.push({items:tc.items.filter(i=>i.str&&i.str.trim()).map(i=>({s:i.str.replace(/\s+/g," ").trim(),x:i.transform[4],y:i.transform[5],w:i.width||0,h:Math.abs(i.transform[3])||i.height||8}))});
   }
-  if(!lines.length) throw new Error("This PDF has no text in it – it is probably a scanned photo. Download the statement again from net banking (PDF, Excel or CSV).");
+  const textCount=pages.reduce((s,p)=>s+p.items.length,0);
+  let rows=null;
+  if(textCount>=15){ try{ rows=stmtRows(pages,false); }catch(e){ rows=null; } }
+  if(rows) return rows;
+  // scanned copy: draw each page as a picture and read it with OCR
+  const w=await ocrWorker(); pages=[];
+  try{
+    for(let p=1;p<=pdf.numPages;p++){
+      bkStatus(`Scanned copy: reading page ${p} of ${pdf.numPages}… (about 10–20 seconds a page)`);
+      const page=await pdf.getPage(p), vp1=page.getViewport({scale:1}), scale=Math.min(3,2600/Math.max(vp1.width,vp1.height)), vp=page.getViewport({scale});
+      const cv=document.createElement("canvas"); cv.width=Math.ceil(vp.width); cv.height=Math.ceil(vp.height);
+      const ctx=cv.getContext("2d"); ctx.fillStyle="#fff"; ctx.fillRect(0,0,cv.width,cv.height);
+      await page.render({canvasContext:ctx,viewport:vp}).promise;
+      const {data}=await w.recognize(cv); pages.push({items:ocrItems(data,scale),ocr:true});
+    }
+  } finally{ w.terminate(); }
+  if(!pages.some(p=>p.items.length)) throw new Error("No writing could be read from this scan. Try a clearer scan, or download the statement from net banking.");
+  return stmtRows(pages,true);
+}
+function ocrNum(s){
+  // OCR often reads 8,400.00 as 8.400.00 or 8,400,00: keep only the last separator as the decimal point
+  let t=String(s).trim().replace(/[Oo](?=[\d,.])|(?<=[\d,.])[Oo]/g,"0").replace(/[lI](?=\d)|(?<=\d)[lI]/g,"1").replace(/\s+/g,"");
+  const m=t.match(/^([-(]?)(rs\.?|₹)?([\d.,]+)(\)?)(cr|dr)?\.?$/i); if(!m) return s;
+  let n=m[3]; const last=Math.max(n.lastIndexOf("."),n.lastIndexOf(","));
+  if(last>=0&&n.length-last-1===2) n=n.slice(0,last).replace(/[.,]/g,"")+"."+n.slice(last+1); else n=n.replace(/[.,]/g,"");
+  return m[1]+n+(m[4]||"")+(m[5]||"");
+}
+function stmtRows(pages,ocr){
+  const all=pages.flatMap(p=>p.items); if(!all.length) throw new Error("This PDF has no text in it.");
+  const hs=all.map(i=>i.h||8).sort((a,b)=>a-b), H=hs[Math.floor(hs.length/2)]||8;
+  const tol=H*0.5, gap=H*(ocr?0.9:0.5), margin=H*0.8;
+  const lines=[];
+  pages.forEach((pg,pi)=>{ const its=[...pg.items].sort((a,b)=>b.y-a.y||a.x-b.x); let cur=null;
+    for(const it of its){ if(!cur||Math.abs(cur.y-it.y)>tol){ cur={y:it.y,page:pi,items:[]}; lines.push(cur); } cur.items.push(it); } });
   lines.forEach(l=>{ l.items.sort((a,b)=>a.x-b.x); l.text=l.items.map(i=>i.s).join(" ").toLowerCase(); });
-  // 2. the heading line (Date … Debit/Withdrawal … Credit/Deposit … Balance)
   const isHead=l=>/date/.test(l.text)&&/(withdraw|debit|deposit|credit|balance|amount)/.test(l.text)&&l.items.length>=3;
-  const hi=lines.findIndex(isHead); if(hi<0) throw new Error("Couldn't find the column headings (Date, Debit, Credit, Balance) in this PDF.");
-  const cells=[]; for(const it of lines[hi].items){ const last=cells[cells.length-1]; if(last&&it.x-(last.x+last.w)<4){ last.s+=" "+it.s; last.w=it.x+it.w-last.x; } else cells.push({...it}); }
-  // headings split over two lines (e.g. "Withdrawal" / "Amount (INR)"): add the next line's words to the heading above them
+  const hi=lines.findIndex(isHead); if(hi<0) throw new Error("Couldn't find the column headings (Date, Debit, Credit, Balance)"+(ocr?" in the scan. Try a clearer scan (straight, not blurred).":" in this PDF."));
+  const cells=[]; for(const it of lines[hi].items){ const last=cells[cells.length-1]; if(last&&it.x-(last.x+last.w)<gap){ last.s+=" "+it.s; last.w=it.x+it.w-last.x; } else cells.push({...it}); }
   const nx=lines[hi+1]; if(nx&&nx.page===lines[hi].page&&!nx.items.some(i=>bkDate(i.s))&&!nx.items.some(i=>/\d/.test(i.s)&&bkNum(i.s))){
     for(const it of nx.items){ const c=cells.reduce((b,c)=>Math.abs(c.x+c.w/2-(it.x+it.w/2))<Math.abs(b.x+b.w/2-(it.x+it.w/2))?c:b); c.s+=" "+it.s; } nx.skip=true; }
   const head=cells.map(c=>c.s), ctr=cells.map(c=>c.x+c.w/2), headKey=lines[hi].text;
   const dateCol=Math.max(0,head.findIndex(h=>/date/i.test(h)));
-  const colOf=it=>{ const c=it.x+it.w/2; for(let k=0;k<cells.length;k++){ if(c>=cells[k].x-6&&c<=cells[k].x+cells[k].w+6) return k; } let b=0; ctr.forEach((v,k)=>{ if(Math.abs(v-c)<Math.abs(ctr[b]-c)) b=k; }); return b; };
-  const numLike=s=>/^[-(]?\s*(rs\.?|₹)?\s*[\d,]+(\.\d+)?\s*\)?\s*(cr|dr)?\.?$/i.test(String(s).trim());
-  // 3. rows: a line that starts with a date is a new transaction; other lines add more words to the one above
+  const colOf=it=>{ const c=it.x+it.w/2; for(let k=0;k<cells.length;k++){ if(c>=cells[k].x-margin&&c<=cells[k].x+cells[k].w+margin) return k; } let b=0; ctr.forEach((v,k)=>{ if(Math.abs(v-c)<Math.abs(ctr[b]-c)) b=k; }); return b; };
+  const numLike=s=>/^[-(]?\s*(rs\.?|₹)?\s*[\d,.]+\s*\)?\s*(cr|dr)?\.?$/i.test(String(s).trim());
   const rows=[head]; let prev=null, started=false;
   for(let i=hi+1;i<lines.length;i++){
     const l=lines[i]; if(l.skip) continue;
     if(l.text===headKey||isHead(l)){ prev=null; continue; }
     const r=Array(cells.length).fill("");
     for(const it of l.items){ const k=colOf(it); r[k]=r[k]?r[k]+" "+it.s:it.s; }
+    if(ocr) for(let k=0;k<r.length;k++){ if(k!==dateCol&&r[k]&&/\d/.test(r[k])&&numLike(r[k].replace(/[OolI]/g,"0"))) r[k]=ocrNum(r[k]); }
+    if(ocr&&r[dateCol]) r[dateCol]=r[dateCol].replace(/[Oo](?=\d)|(?<=\d)[Oo]/g,"0");
     if(bkDate(r[dateCol])){ rows.push(r); prev=r; started=true; continue; }
-    // a date written with spaces may be split across two columns ("01 Apr" + "2026"): try joining the line's first words
     const lead=l.items.slice(0,3).map(i=>i.s).join(" ");
-    if(!bkDate(r[dateCol]) && /^\d{1,2}[ -][A-Za-z]{3}/.test(lead)){ const m=lead.match(/^\d{1,2}[ -][A-Za-z]{3}[a-z]*[ -,]*\d{2,4}/); if(m&&bkDate(m[0])){ r[dateCol]=m[0]; rows.push(r); prev=r; started=true; continue; } }
+    if(/^\d{1,2}[ -][A-Za-z]{3}/.test(lead)){ const m=lead.match(/^\d{1,2}[ -][A-Za-z]{3}[a-z]*[ -,]*\d{2,4}/); if(m&&bkDate(m[0])){ r[dateCol]=m[0]; rows.push(r); prev=r; started=true; continue; } }
     if(!started||!prev) continue;
     if(/(opening|closing)\s+balance|total|statement summary|page \d+/i.test(l.text)){ prev=null; continue; }
     r.forEach((v,k)=>{ if(v&&!numLike(v)&&!numLike(prev[k]||"")) prev[k]=prev[k]?prev[k]+" "+v:v; });
   }
-  if(rows.length<2) throw new Error("Found the headings but no transactions in this PDF.");
+  if(rows.length<2) throw new Error("Found the headings but no transactions"+(ocr?" in the scan.":" in this PDF."));
+  bkLastOcr=ocr;
   return rows;
 }
 /* ---------- local storage + backup ---------- */
