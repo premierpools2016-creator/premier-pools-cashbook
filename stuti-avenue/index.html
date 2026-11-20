@@ -95,6 +95,7 @@ td.flat input{width:80px;font-family:var(--mono)}
 .stats b{color:var(--ink);font-family:var(--mono)}
 .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
 .empty{padding:28px;text-align:center;color:var(--muted)}
+#bmFlatBox[hidden]{display:none!important}
 .bmpresets{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .bmchip{border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:999px;padding:7px 12px;font:inherit;font-size:13px;cursor:pointer}
 .bmchip.on{background:var(--carbon);border-color:var(--carbon);color:#fff}
@@ -382,7 +383,7 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
       </div>
       <div class="tbl">
         <table>
-          <thead><tr><th>Flat no.</th><th>Member name</th><th>Mobile</th><th>Email</th><th>Rented / self</th><th>Rate</th><th></th></tr></thead>
+          <thead><tr><th>Flat no.</th><th>Member name</th><th>Mobile</th><th>Email</th><th>Rented / self</th><th>Rate</th><th>Bank details (as in statement)</th><th></th></tr></thead>
           <tbody id="memBody"></tbody>
         </table>
       </div>
@@ -544,7 +545,11 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
             <button class="bmchip" type="button" data-bmp="maint">Maintenance from member</button>
             <button class="bmchip" type="button" data-bmp="other">Others</button>
           </div>
-          <label id="bmFlatBox" hidden style="margin-top:10px">Flat<select id="bmFlat"></select></label>
+          <div class="fields" id="bmFlatBox" hidden style="margin-top:10px">
+            <label>Flat<select id="bmFlat"></select></label>
+            <label>Member's bank details<input id="bmMBank" placeholder="Name / UPI ID / A/c last 4 as in statement"></label>
+            <p class="hint full" id="bmMBankHint" style="margin:-4px 0 0"></p>
+          </div>
           <div class="fields" style="margin-top:10px">
             <label>Date<input type="date" id="bmDate"></label>
             <label>Type<select id="bmType"><option value="cr">Money in (credit)</option><option value="dr">Money out (debit)</option></select></label>
@@ -1370,8 +1375,9 @@ function renderMembers(){
     <td><input id="e-${esc(m.id)}" data-k="email" type="email" value="${esc(m.email)}" placeholder="name@example.com" style="min-width:190px"></td>
     <td><select id="o-${esc(m.id)}" data-k="occ"><option value="self"${m.occ!=="rented"?" selected":""}>Self</option><option value="rented"${m.occ==="rented"?" selected":""}>Rented</option></select></td>
     <td class="num">Rs. ${inr(rateFor(m.occ))}</td>
+    <td><input id="b-${esc(m.id)}" data-k="bank" value="${esc(m.bank||"")}" placeholder="Name, UPI ID, A/c last 4" style="min-width:200px"></td>
     <td><button class="btn danger small" type="button" data-del="${esc(m.id)}">Remove</button></td></tr>`).join("")
-    : `<tr><td colspan="7" class="empty">No flats yet. Press "Add flat" to start the register.</td></tr>`;
+    : `<tr><td colspan="8" class="empty">No flats yet. Press "Add flat" to start the register.</td></tr>`;
   const selfN=list.filter(m=>m.occ!=="rented").length, rentN=list.length-selfN;
   $("memStats").innerHTML = `<span>Flats <b>${list.length}</b></span><span>Self <b>${selfN}</b></span><span>Rented <b>${rentN}</b></span><span>Due per 6 months <b>Rs. ${inr(list.reduce((s,m)=>s+rateFor(m.occ)*6,0))}</b></span>`;
 }
@@ -2828,7 +2834,10 @@ const dayDiff=(a,b)=>Math.round((new Date(a+"T00:00")-new Date(b+"T00:00"))/864e
 const squash=s=>String(s||"").replace(/[^a-z0-9]/gi,"").toLowerCase();
 function refHit(t,ref){ const r=squash(ref); return r.length>=4 && squash(t.narr+" "+t.ref).includes(r); }
 function nameHit(t,name){ const w=String(name||"").toLowerCase().split(/\s+/).filter(x=>x.length>=4); const n=String(t.narr||"").toLowerCase(); return w.some(x=>n.includes(x)); }
-function flatHit(t,flat){ const f=String(flat||"").replace(/[^a-z0-9]/gi,"").toLowerCase(); return f.length>=3 && squash(t.narr).includes(f); }
+function bankKeys(m){ return String(m&&m.bank||"").split(/[,;\n\/]+/).map(squash).filter(k=>k.length>=4); }
+function flatHit(t,flat){ const f=String(flat||"").replace(/[^a-z0-9]/gi,"").toLowerCase(); const hay=squash(t.narr)+" "+squash(t.ref);
+  if(f.length>=3 && squash(t.narr).includes(f)) return true;
+  const m=members.find(x=>squash(x.flatNo)===f); return bankKeys(m).some(k=>hay.includes(k)); }
 
 /* ---------- matching ---------- */
 function usedKeys(type,except){ return new Set(bankRows().filter(b=>b!==except&&b.match&&b.match.type===type).map(b=>b.match.id)); }
@@ -2876,7 +2885,7 @@ function autoMatch(rows){
   for(const t of rows){
     if(t.match) continue;
     const c=candidatesFor(t,false).sort((a,b)=>b.score-a.score);
-    if(c.length===1||(c.length>1&&c[0].score>=10&&c[1].score<10)||(c.length>1&&c[0].score>=3&&c[1].score<3)){ t.match={type:c[0].type,id:c[0].id,auto:true}; n++; continue; }
+    if(c.length===1||(c.length>1&&c[0].score>=10&&c[1].score<10)||(c.length>1&&c[0].score>=3&&c[1].score<3)||(c.length>1&&c[0].score>=2&&c[0].score-c[1].score>=2.5)){ t.match={type:c[0].type,id:c[0].id,auto:true}; n++; continue; }
     const o=autoOther(t); if(o){ t.match={type:"other",cat:o,auto:true}; n++; }
   }
   return n;
@@ -2989,6 +2998,7 @@ $("bmSave").addEventListener("click",()=>{
   const t={date,narr:$("bmNarr").value.trim(),ref:$("bmRef").value.trim(),cr:$("bmType").value==="cr"?amt:0,dr:$("bmType").value==="dr"?amt:0,bal:null,src:"manual",addedAt:new Date().toISOString(),by:CLOUD.on?CLOUD.email:""};
   t.id=bankId(t)+"m"; if(bankRows().some(b=>b.id===t.id)){ setMsg(msg,"err","This transaction is already in the bank book."); return; }
   const add=[t];
+  if(bmPreset==="maint"&&ROLE==="admin"){ const m=members.find(x=>x.id===$("bmFlat").value), bk=$("bmMBank").value.trim(); if(m&&bk&&bk!==(m.bank||"")){ m.bank=bk; persist(); try{ renderMembers(); }catch(_){} } }
   if(bmPreset==="dgvcl"&&$("bmNeft").checked){ const c={date,narr:"NEFT charges – DGVCL electricity bill"+(t.ref?" "+t.ref:""),ref:t.ref,cr:0,dr:BM_NEFT,bal:null,src:"manual",addedAt:t.addedAt,by:t.by}; c.id=bankId(c)+"m"; if(!bankRows().some(b=>b.id===c.id)) add.push(c); }
   autoMatch(add); bankRows().push(...add); persist(); ["bmAmt","bmRef","bmNarr"].forEach(i=>$(i).value=""); bmSetPreset("");
   renderBank(); setMsg(msg,"ok",add.length>1?`Electricity bill Rs. ${inr(t.dr)} and NEFT charge Rs. ${inr(BM_NEFT)} added.`:"Transaction added.");
@@ -3842,7 +3852,14 @@ const BM_PRESETS={
   maint:{type:"cr",narr:"Maintenance received",amt:""},
   other:{type:null,narr:"",amt:""},
 };
-function bmMaintNarr(){ const m=members.find(x=>x.id===$("bmFlat").value); $("bmNarr").value=m?`Maintenance received – Flat ${m.flatNo}${m.name?" "+m.name:""}`:"Maintenance received"; }
+function bmMaintNarr(fromFlat){
+  const m=members.find(x=>x.id===$("bmFlat").value);
+  if(fromFlat!==false) $("bmMBank").value=m?(m.bank||""):"";
+  const bk=$("bmMBank").value.trim();
+  $("bmNarr").value=m?`Maintenance received – Flat ${m.flatNo}${m.name?" "+m.name:""}${bk?" ("+bk+")":""}`:"Maintenance received";
+  $("bmMBankHint").textContent=!m?"":m.bank?(bk===m.bank?"Remembered from before.":ROLE==="admin"?"Changed: the new details will be remembered for this flat.":"Only the admin can change the remembered details."):(ROLE==="admin"?"Type once: it will be remembered for this flat and used to match the bank statement.":"Not saved yet for this flat. The admin can add it in the member register.");
+}
+$("bmMBank").addEventListener("input",()=>bmMaintNarr(false));
 let bmPreset="";
 function bmSetPreset(k){
   bmPreset=k; document.querySelectorAll("[data-bmp]").forEach(b=>b.classList.toggle("on",b.dataset.bmp===k));
