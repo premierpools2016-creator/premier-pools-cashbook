@@ -95,6 +95,7 @@ td.flat input{width:80px;font-family:var(--mono)}
 .stats b{color:var(--ink);font-family:var(--mono)}
 .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
 .empty{padding:28px;text-align:center;color:var(--muted)}
+.bkexp{margin-top:12px;padding:12px;border:1px dashed var(--line);border-radius:12px}
 .bmdate{display:grid;gap:6px}
 .bmsteps{display:flex;flex-wrap:wrap;gap:6px}
 #bmFlatBox[hidden]{display:none!important}
@@ -582,6 +583,18 @@ a.btn.wa{background:var(--stamp);border-color:var(--stamp);color:var(--paper)}
           <select id="bkFMonth" aria-label="Month"></select>
           <select id="bkFState" aria-label="Status"><option value="">All</option><option value="no">Not matched</option><option value="yes">Matched</option></select>
           <input id="bkFSearch" placeholder="Search narration, ref, amount">
+        </div>
+        <div class="bkexp">
+          <div class="fields">
+            <label>Statement from<input type="date" id="bxFrom"></label>
+            <label>To<input type="date" id="bxTo"></label>
+          </div>
+          <div class="actions" style="margin-top:8px">
+            <button class="btn small" type="button" id="bxPdf">Download PDF</button>
+            <button class="btn small ghost" type="button" id="bxXls">Download Excel</button>
+            <button class="btn small ghost" type="button" id="bxShare">Share PDF</button>
+          </div>
+          <div class="msg" id="bxMsg" role="status"></div>
         </div>
         <div class="cards" id="bkList" style="margin-top:12px"></div>
         <details class="more" id="bkRecoBox" style="margin-top:14px" open><summary>Reconciliation</summary><div id="bkReco" style="margin-top:8px"></div></details>
@@ -3885,6 +3898,73 @@ function bmShowLast(){ const l=bmLast(); $("bmLastHint").textContent=l?`Last ent
 document.addEventListener("click",e=>{ const d=e.target.dataset&&e.target.dataset.bmd; if(d===undefined) return;
   const base=$("bmDate").value||bmLast()||todayISO(), t=new Date(base+"T12:00:00"); t.setDate(t.getDate()+Number(d)); $("bmDate").value=isoOf(t); $("bmAmt").focus(); });
 $("bmSave").addEventListener("click",()=>{ setTimeout(()=>{ if(/added/i.test($("bkMsg").textContent)&&$("bmDate").value){ try{ localStorage.setItem(BM_LAST,$("bmDate").value); }catch(_){} bmShowLast(); } },0); });
+
+/* ---------- bank book statement: PDF / Excel ---------- */
+function bxData(){
+  const from=$("bxFrom").value, to=$("bxTo").value, b=cfg.bank||{};
+  const list=bankRows().filter(t=>(!from||t.date>=from)&&(!to||t.date<=to)).sort((a,c)=>a.date.localeCompare(c.date)||(a.addedAt||"").localeCompare(c.addedAt||""));
+  const open=from?bankOpenAt(from):(Number(b.openAmt)||0); let bal=open;
+  const rows=list.map(t=>{ bal+=bkAmt(t); return {t,bal}; });
+  return {from,to,open,close:bal,rows,tin:list.reduce((s,t)=>s+(+t.cr||0),0),tout:list.reduce((s,t)=>s+(+t.dr||0),0),un:list.filter(t=>!t.match).length};
+}
+function bxName(ext){ const d=bxData(); return `Stuti Avenue bank book ${d.from?fmtDate(d.from).replace(/\//g,"-"):"start"} to ${d.to?fmtDate(d.to).replace(/\//g,"-"):"today"}.${ext}`; }
+function bxPdfBlob(){
+  const { jsPDF } = window.jspdf; const doc=new jsPDF({unit:"mm",format:"a4",orientation:"landscape"}); const W=297,H=210,M=10, d=bxData(), b=cfg.bank||{};
+  const period=`${d.from?fmtDate(d.from):"start"} to ${d.to?fmtDate(d.to):"today"}`;
+  const head=()=>{ doc.setFont("helvetica","bold"); doc.setFontSize(12.5); doc.setTextColor(24,33,58); doc.text(cfg.name,M,13,{maxWidth:W-2*M-90});
+    doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(93,104,134); doc.text([b.name,b.last4?"A/c ending "+b.last4:"",cfg.reg?"Reg. No. "+cfg.reg:""].filter(Boolean).join("  |  "),M,18.5,{maxWidth:W-2*M-90});
+    doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(35,64,168); doc.text("BANK BOOK",W-M,13,{align:"right"});
+    doc.setFont("helvetica","normal"); doc.setFontSize(8.5); doc.setTextColor(93,104,134); doc.text(period,W-M,18.5,{align:"right"});
+    doc.setDrawColor(213,219,231); doc.setLineWidth(0.3); doc.line(M,22,W-M,22); return 27; };
+  let y=head();
+  y=pdfTable(doc,{y,M,W,H,head,cols:[{h:"Summary",w:120},{h:"Rs.",w:40,r:1}],rows:[
+    {cells:["Opening balance",inr(d.open)]},{cells:["Money in ("+d.rows.filter(r=>r.t.cr>0).length+")",inr(d.tin)]},{cells:["Money out ("+d.rows.filter(r=>r.t.dr>0).length+")",inr(d.tout)]},
+    {bold:true,fill:[223,242,232],cells:["Closing balance",inr(d.close)]},...(d.un?[{fill:[253,240,238],cells:["Entries not yet linked in the app",String(d.un)]}]:[])]});
+  y+=5;
+  y=pdfTable(doc,{y,M,W,H,head,cols:[{h:"Date",w:19},{h:"Narration",w:88},{h:"Ref / Chq",w:30},{h:"Money in",w:24,r:1},{h:"Money out",w:24,r:1},{h:"Balance",w:26,r:1},{h:"Linked in app",w:66}],rows:[
+    {bold:true,fill:[238,241,246],cells:[d.from?fmtDate(d.from):"","Opening balance","","","",inr(d.open),""]},
+    ...d.rows.map(({t,bal})=>({fill:t.match?null:[253,246,236],cells:[fmtDate(t.date),t.narr||"",t.ref||"",t.cr?inr(t.cr):"",t.dr?inr(t.dr):"",inr(bal),t.match?matchText(t):"Not matched"]})),
+    {bold:true,fill:[223,242,232],cells:[d.to?fmtDate(d.to):"","Closing balance","",inr(d.tin),inr(d.tout),inr(d.close),""]}]});
+  const n=doc.getNumberOfPages(), gen=new Date().toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"});
+  for(let i=1;i<=n;i++){ doc.setPage(i); doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(150,160,185); doc.text(`Generated ${gen}`,M,H-6); doc.text(`Page ${i} of ${n}`,W-M,H-6,{align:"right"}); }
+  return doc.output("blob");
+}
+async function bxGo(kind){
+  const msg=$("bxMsg"), d=bxData();
+  if(d.from&&d.to&&d.to<d.from){ setMsg(msg,"err","The 'To' date is before the 'From' date."); return; }
+  if(!d.rows.length){ setMsg(msg,"err","No bank entries between these dates."); return; }
+  try{
+    if(kind==="xls"){
+      setMsg(msg,"","Making the Excel file…");
+      if(!window.XLSX) await loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
+      const b=cfg.bank||{}, dt=s=>{ const [y,m,dd]=s.split("-").map(Number); return new Date(Date.UTC(y,m-1,dd)); };
+      const aoa=[[cfg.name],[`Bank book ${d.from?fmtDate(d.from):"start"} to ${d.to?fmtDate(d.to):"today"}`+(b.name?` · ${b.name}`:"")+(b.last4?` · A/c ending ${b.last4}`:"")],[],
+        ["Date","Narration","Ref / Chq","Money in","Money out","Balance","Linked in app"],
+        [d.from?dt(d.from):"","Opening balance","","","",d.open,""],
+        ...d.rows.map(({t,bal})=>[dt(t.date),t.narr||"",t.ref||"",t.cr||"",t.dr||"",Math.round(bal*100)/100,t.match?matchText(t):"Not matched"]),
+        [d.to?dt(d.to):"","Closing balance","",d.tin,d.tout,Math.round(d.close*100)/100,""]];
+      const ws=XLSX.utils.aoa_to_sheet(aoa,{cellDates:true});
+      ws["!cols"]=[{wch:12},{wch:52},{wch:18},{wch:13},{wch:13},{wch:14},{wch:42}];
+      const r0=4, r1=aoa.length-1;
+      for(let r=r0;r<=r1;r++){ const c=ws[XLSX.utils.encode_cell({r,c:0})]; if(c&&c.t==="d"){ c.z="dd/mm/yyyy"; }
+        for(const col of [3,4,5]){ const x=ws[XLSX.utils.encode_cell({r,c:col})]; if(x&&x.t==="n") x.z="#,##0.00"; } }
+      ws["!autofilter"]={ref:`A4:G${r1}`};
+      const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Bank book");
+      const out=XLSX.write(wb,{bookType:"xlsx",type:"array",cellDates:true});
+      saveBlob(new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),bxName("xlsx"));
+      setMsg(msg,"ok",`Excel file downloaded: ${d.rows.length} entries.`); return;
+    }
+    if(!window.jspdf){ setMsg(msg,"err","The PDF maker could not load. Connect to the internet once and reload the app."); return; }
+    const blob=bxPdfBlob();
+    if(kind==="share") await shareFile(blob,bxName("pdf"),msg,"application/pdf");
+    else { saveBlob(blob,bxName("pdf")); setMsg(msg,"ok",`PDF downloaded: ${d.rows.length} entries.`); }
+  }catch(err){ setMsg(msg,"err","Could not make the file: "+(err.message||err)); }
+}
+$("bxPdf").addEventListener("click",()=>bxGo("pdf"));
+$("bxXls").addEventListener("click",()=>bxGo("xls"));
+$("bxShare").addEventListener("click",()=>bxGo("share"));
+const _bxRenderBank=renderBank;
+renderBank=function(){ _bxRenderBank(); if(!$("bxFrom").value&&!$("bxTo").value){ const [a,c]=fyRange(todayISO()); $("bxFrom").value=a; $("bxTo").value=c; } };
 /* ---------- local storage + backup ---------- */
 const KEY="stuti-avenue-receipts-v1", META="stuti-avenue-receipts-meta";
 const SEED={"config": {"address": "RESIDANCY SERVAY NO 367, PLOT NO. 327, OPP SOMCHINTAMANI APPT, TP 14, SURAT 395009", "cycle": "apr", "dueDays": 15, "extras": {"entry": 0, "flattx": 0, "nonocc": 0, "other": 0, "parking": 0, "repair": 0, "sharetx": 0, "sinking": 0}, "fmt": "plain", "name": "STUTI AVENUE CO. OP. HOUSING SOCIETY LTD D BLDG", "penaltyRate": 10, "prefix": "SA", "reg": "SRT/S 7124/ DT. 22/11/2012", "rentRate": 1700, "secretary": "", "selfRate": 1400, "startSeq": 1, "treasurer": ""}, "members": [{"id": "f02", "flatNo": "D-102", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f03", "flatNo": "D-103", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f04", "flatNo": "D-104", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f05", "flatNo": "D-201", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f06", "flatNo": "D-202", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f07", "flatNo": "D-203", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f08", "flatNo": "D-204", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f09", "flatNo": "D-301", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f10", "flatNo": "D-302", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f11", "flatNo": "D-303", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f12", "flatNo": "D-304", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f13", "flatNo": "D-401", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f14", "flatNo": "D-402", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f15", "flatNo": "D-403", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f17", "flatNo": "D-501", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f18", "flatNo": "D-502", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f19", "flatNo": "D-503", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "f20", "flatNo": "D-504", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrpbvq1", "flatNo": "D-101", "name": "", "mobile": "", "email": "", "occ": "self"}, {"id": "fmvrqe8qi", "flatNo": "D-404", "name": "", "mobile": "", "email": "", "occ": "self"}], "receipts": []};
